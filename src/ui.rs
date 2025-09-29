@@ -165,7 +165,12 @@ impl PixelSorterApp {
 }
 
 impl eframe::App for PixelSorterApp {
-    fn update(&mut self, ctx: &egui::Context, _frame: &mut eframe::Frame) {
+    fn update(&mut self, ctx: &egui::Context, frame: &mut eframe::Frame) {
+        // Ensure fullscreen mode is always active
+        if !frame.info().window_info.fullscreen {
+            ctx.send_viewport_cmd(egui::ViewportCommand::Fullscreen(true));
+        }
+        
         // Handle GPIO input
         self.handle_gpio_input(ctx);
 
@@ -321,6 +326,9 @@ impl eframe::App for PixelSorterApp {
                         egui::Key::Num3 => self.on_button_press(3, ctx),
                         egui::Key::Num4 => self.on_button_press(4, ctx),
                         egui::Key::Num5 => self.on_button_press(5, ctx),
+                        egui::Key::F11 => {
+                            ctx.send_viewport_cmd(egui::ViewportCommand::Fullscreen(true));
+                        }
                         egui::Key::Escape => std::process::exit(0),
                         _ => {}
                     }

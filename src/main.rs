@@ -45,9 +45,13 @@ async fn main() -> Result<()> {
     let options = eframe::NativeOptions {
         viewport: egui::ViewportBuilder::default()
             .with_inner_size([config.display.width as f32, config.display.height as f32])
+            .with_min_inner_size([config.display.width as f32, config.display.height as f32])
+            .with_max_inner_size([config.display.width as f32, config.display.height as f32])
             .with_decorations(false)  // No window decorations for fullscreen experience
             .with_resizable(false)
-            .with_fullscreen(true),   // Always start in fullscreen
+            .with_maximized(true)     // Maximize window
+            .with_fullscreen(true)    // Always start in fullscreen
+            .with_always_on_top(true), // Keep on top
         ..Default::default()
     };
 
