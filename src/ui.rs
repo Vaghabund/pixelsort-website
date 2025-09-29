@@ -221,6 +221,12 @@ impl eframe::App for PixelSorterApp {
                         self.save_image();
                     }
 
+                    ui.add_space(10.0);
+
+                    if ui.add_sized([200.0, 50.0], egui::Button::new("🚪 Exit")).clicked() {
+                        std::process::exit(0);
+                    }
+
                     ui.add_space(20.0);
                     ui.separator();
                     ui.add_space(10.0);
@@ -293,12 +299,13 @@ impl eframe::App for PixelSorterApp {
                         ui.label("3: Threshold ↑");
                         ui.label("4: Threshold ↓");
                         ui.label("5: Save Image");
+                        ui.label("ESC or Exit Button: Quit");
                     } else {
                         ui.separator();
                         ui.add_space(10.0);
                         ui.label("Keyboard Shortcuts:");
                         ui.label("1-5: Button functions");
-                        ui.label("ESC: Exit");
+                        ui.label("ESC or Exit Button: Quit");
                     }
                 });
             });

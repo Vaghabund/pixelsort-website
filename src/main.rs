@@ -41,13 +41,13 @@ async fn main() -> Result<()> {
         }
     };
 
-    // Setup eframe options for Raspberry Pi display
+    // Setup eframe options for Raspberry Pi display (always fullscreen)
     let options = eframe::NativeOptions {
         viewport: egui::ViewportBuilder::default()
             .with_inner_size([config.display.width as f32, config.display.height as f32])
-            .with_decorations(!config.display.fullscreen)
+            .with_decorations(false)  // No window decorations for fullscreen experience
             .with_resizable(false)
-            .with_fullscreen(config.display.fullscreen),
+            .with_fullscreen(true),   // Always start in fullscreen
         ..Default::default()
     };
 
