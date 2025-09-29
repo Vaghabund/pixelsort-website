@@ -19,14 +19,14 @@ pub struct DisplayConfig {
     pub image_display_height: u32,
 }
 
-#[derive(Debug, Clone, Serialize, Deserialize)]
+#[derive(Debug, Clone, Serialize, Deserialize, Default)]
 pub struct GpioConfig {
     pub enabled: bool,
     pub debounce_ms: u64,
     pub pins: GpioPins,
 }
 
-#[derive(Debug, Clone, Serialize, Deserialize)]
+#[derive(Debug, Clone, Serialize, Deserialize, Default)]
 pub struct GpioPins {
     pub load_image: u8,
     pub next_algorithm: u8,
@@ -35,7 +35,7 @@ pub struct GpioPins {
     pub save_image: u8,
 }
 
-#[derive(Debug, Clone, Serialize, Deserialize)]
+#[derive(Debug, Clone, Serialize, Deserialize, Default)]
 pub struct ProcessingConfig {
     pub default_threshold: f32,
     pub default_interval: usize,
