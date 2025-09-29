@@ -6,10 +6,7 @@ use anyhow::Result;
 
 use crate::config::Config;
 use crate::gpio_controller::GpioController;
-use cr                    ui.add_space(10.0);
-
-                    if ui.add_sized([200.0, 50.0], egui::Button::new("🚪 Exit")).clicked() {
-                        std::process::exit(0);
+use crate::image_processor::ImageProcessor;
                     }_processor::ImageProcessor;
 use crate::pixel_sorter::{PixelSorter, SortingAlgorithm, SortingParameters};
 

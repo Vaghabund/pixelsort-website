@@ -48,7 +48,6 @@ async fn main() -> Result<()> {
             .with_position([0.0, 0.0])            // Top-left corner (no gaps)
             .with_decorations(false)              // NO title bar, borders, or buttons
             .with_resizable(false)                // Cannot be resized
-            .with_movable(false)                  // Cannot be moved
             .with_close_button(false)             // No close button
             .with_minimize_button(false)          // No minimize button
             .with_maximize_button(false),         // No maximize button
