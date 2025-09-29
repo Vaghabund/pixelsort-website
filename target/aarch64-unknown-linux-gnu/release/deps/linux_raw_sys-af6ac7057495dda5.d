@@ -1,0 +1,10 @@
+C:\Users\joel\Pixelsort2\target\aarch64-unknown-linux-gnu\release\deps\linux_raw_sys-af6ac7057495dda5.d: C:\Users\joel\.cargo\registry\src\index.crates.io-1949cf8c6b5b557f\linux-raw-sys-0.3.8\src\lib.rs C:\Users\joel\.cargo\registry\src\index.crates.io-1949cf8c6b5b557f\linux-raw-sys-0.3.8\src\aarch64\errno.rs C:\Users\joel\.cargo\registry\src\index.crates.io-1949cf8c6b5b557f\linux-raw-sys-0.3.8\src\aarch64\general.rs C:\Users\joel\.cargo\registry\src\index.crates.io-1949cf8c6b5b557f\linux-raw-sys-0.3.8\src\aarch64\ioctl.rs
+
+C:\Users\joel\Pixelsort2\target\aarch64-unknown-linux-gnu\release\deps\liblinux_raw_sys-af6ac7057495dda5.rlib: C:\Users\joel\.cargo\registry\src\index.crates.io-1949cf8c6b5b557f\linux-raw-sys-0.3.8\src\lib.rs C:\Users\joel\.cargo\registry\src\index.crates.io-1949cf8c6b5b557f\linux-raw-sys-0.3.8\src\aarch64\errno.rs C:\Users\joel\.cargo\registry\src\index.crates.io-1949cf8c6b5b557f\linux-raw-sys-0.3.8\src\aarch64\general.rs C:\Users\joel\.cargo\registry\src\index.crates.io-1949cf8c6b5b557f\linux-raw-sys-0.3.8\src\aarch64\ioctl.rs
+
+C:\Users\joel\Pixelsort2\target\aarch64-unknown-linux-gnu\release\deps\liblinux_raw_sys-af6ac7057495dda5.rmeta: C:\Users\joel\.cargo\registry\src\index.crates.io-1949cf8c6b5b557f\linux-raw-sys-0.3.8\src\lib.rs C:\Users\joel\.cargo\registry\src\index.crates.io-1949cf8c6b5b557f\linux-raw-sys-0.3.8\src\aarch64\errno.rs C:\Users\joel\.cargo\registry\src\index.crates.io-1949cf8c6b5b557f\linux-raw-sys-0.3.8\src\aarch64\general.rs C:\Users\joel\.cargo\registry\src\index.crates.io-1949cf8c6b5b557f\linux-raw-sys-0.3.8\src\aarch64\ioctl.rs
+
+C:\Users\joel\.cargo\registry\src\index.crates.io-1949cf8c6b5b557f\linux-raw-sys-0.3.8\src\lib.rs:
+C:\Users\joel\.cargo\registry\src\index.crates.io-1949cf8c6b5b557f\linux-raw-sys-0.3.8\src\aarch64\errno.rs:
+C:\Users\joel\.cargo\registry\src\index.crates.io-1949cf8c6b5b557f\linux-raw-sys-0.3.8\src\aarch64\general.rs:
+C:\Users\joel\.cargo\registry\src\index.crates.io-1949cf8c6b5b557f\linux-raw-sys-0.3.8\src\aarch64\ioctl.rs:

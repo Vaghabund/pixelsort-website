@@ -1,0 +1,42 @@
+# Raspberry Pi Pixel Sorter Configuration
+# This file configures display, GPIO, and processing settings
+
+[display]
+# Display dimensions (adjust for your screen)
+width = 800
+height = 480
+# Set to false for windowed mode during development
+fullscreen = true
+# Image display area within the interface
+image_display_width = 480
+image_display_height = 360
+
+[gpio]
+# Enable/disable GPIO button functionality
+enabled = true
+# Debounce delay in milliseconds to prevent button bounce
+debounce_ms = 200
+
+[gpio.pins]
+# GPIO pin assignments (BCM numbering)
+load_image = 18
+next_algorithm = 19
+threshold_up = 20
+threshold_down = 21
+save_image = 26
+
+[processing]
+# Default algorithm parameters
+default_threshold = 50.0
+default_interval = 10
+# Maximum image dimensions to prevent memory issues
+max_image_width = 1920
+max_image_height = 1080
+# Preview scale factor (higher = faster preview, lower quality)
+preview_scale_factor = 4
+
+[paths]
+# Directories for images and output
+sample_images_dir = "sample_images"
+default_save_dir = "output"
+config_file = "pixelsort_config.toml"
