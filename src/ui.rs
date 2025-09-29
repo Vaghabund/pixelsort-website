@@ -166,14 +166,17 @@ impl PixelSorterApp {
 
 impl eframe::App for PixelSorterApp {
     fn update(&mut self, ctx: &egui::Context, frame: &mut eframe::Frame) {
-        // Force fullscreen mode on startup (egui 0.24 approach)
+        // Aggressively enforce fullscreen mode every frame
         ctx.send_viewport_cmd(egui::ViewportCommand::Fullscreen(true));
+        ctx.send_viewport_cmd(egui::ViewportCommand::Maximized(true));
         
         // Handle GPIO input
         self.handle_gpio_input(ctx);
 
-        // Main UI
-        egui::CentralPanel::default().show(ctx, |ui| {
+        // Make sure we use the full screen area
+        egui::CentralPanel::default()
+            .frame(egui::Frame::none()) // Remove any padding/margins
+            .show(ctx, |ui| {
             ui.horizontal(|ui| {
                 // Left panel - Image display
                 ui.vertical(|ui| {
@@ -284,6 +287,10 @@ impl eframe::App for PixelSorterApp {
                     // Status display
                     ui.label("Status:");
                     ui.label(&self.status_message);
+                    
+                    // Debug info for window size
+                    let screen_rect = ctx.screen_rect();
+                    ui.label(format!("Screen: {:.0}×{:.0}", screen_rect.width(), screen_rect.height()));
 
                     if self.is_processing {
                         ui.add_space(10.0);
