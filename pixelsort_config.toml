@@ -2,14 +2,14 @@
 # This file configures display, GPIO, and processing settings
 
 [display]
-# Display dimensions (adjust for your screen)
-width = 800
-height = 480
+# Display dimensions (1024x600 actual screen size)
+width = 1024
+height = 600
 # Set to false for windowed mode during development
 fullscreen = true
 # Image display area within the interface
-image_display_width = 480
-image_display_height = 360
+image_display_width = 700
+image_display_height = 400
 
 [gpio]
 # Enable/disable GPIO button functionality

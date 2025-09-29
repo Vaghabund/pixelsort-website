@@ -166,10 +166,6 @@ impl PixelSorterApp {
 
 impl eframe::App for PixelSorterApp {
     fn update(&mut self, ctx: &egui::Context, frame: &mut eframe::Frame) {
-        // Aggressively enforce fullscreen mode every frame
-        ctx.send_viewport_cmd(egui::ViewportCommand::Fullscreen(true));
-        ctx.send_viewport_cmd(egui::ViewportCommand::Maximized(true));
-        
         // Handle GPIO input
         self.handle_gpio_input(ctx);
 
