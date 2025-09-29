@@ -306,7 +306,7 @@ impl Config {
             },
             gpio: GpioConfig {
                 enabled: false,
-                ..Default::default().gpio
+                ..GpioConfig::default()
             },
             ..Default::default()
         }
@@ -324,7 +324,7 @@ impl Config {
             processing: ProcessingConfig {
                 max_image_width: 2560,
                 max_image_height: 1440,
-                ..Default::default().processing
+                ..ProcessingConfig::default()
             },
             ..Default::default()
         }
