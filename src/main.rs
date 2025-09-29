@@ -41,14 +41,17 @@ async fn main() -> Result<()> {
         }
     };
 
-    // Setup eframe options for 1024x600 display (actual screen size)
+    // HARD-CODED FULLSCREEN - Multiple approaches to ensure fullscreen
     let options = eframe::NativeOptions {
         viewport: egui::ViewportBuilder::default()
-            .with_inner_size([1024.0, 600.0])    // Match actual screen: 1024x600
-            .with_position([0.0, 0.0])            // Position at top-left corner
-            .with_decorations(false)              // No window decorations (title bar, etc.)
-            .with_resizable(false)                // Not resizable
-            .with_fullscreen(true),               // Force fullscreen mode
+            .with_fullscreen(true)                // Primary: Force fullscreen
+            .with_maximized(true)                 // Backup: Maximize if fullscreen fails
+            .with_inner_size([1024.0, 600.0])    // Fallback: Match screen size
+            .with_position([0.0, 0.0])            // Ensure top-left position
+            .with_decorations(false)              // Remove all window chrome
+            .with_resizable(false)                // Lock window size
+            .with_always_on_top()                 // Force on top
+            .with_window_level(egui::WindowLevel::AlwaysOnTop), // Additional always on top
         ..Default::default()
     };
 
