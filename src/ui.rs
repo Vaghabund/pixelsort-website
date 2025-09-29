@@ -6,7 +6,7 @@ use anyhow::Result;
 
 use crate::config::Config;
 use crate::gpio_controller::GpioController;
-use crate::image_processor::ImageProcessor;
+use crat                    if ui.add_sized([200.0, 50.0], egui::Button::new("🚪 Exit")).clicked() {ge_processor::ImageProcessor;
 use crate::pixel_sorter::{PixelSorter, SortingAlgorithm, SortingParameters};
 
 pub struct PixelSorterApp {
@@ -166,16 +166,6 @@ impl PixelSorterApp {
 
 impl eframe::App for PixelSorterApp {
     fn update(&mut self, ctx: &egui::Context, frame: &mut eframe::Frame) {
-        // HARD-CODED FULLSCREEN ENFORCEMENT - Run every few frames
-        static mut FULLSCREEN_COUNTER: u32 = 0;
-        unsafe {
-            FULLSCREEN_COUNTER += 1;
-            if FULLSCREEN_COUNTER % 60 == 0 {  // Every 60 frames (~1 second at 60fps)
-                ctx.send_viewport_cmd(egui::ViewportCommand::Fullscreen(true));
-                ctx.send_viewport_cmd(egui::ViewportCommand::Maximized(true));
-            }
-        }
-        
         // Handle GPIO input
         self.handle_gpio_input(ctx);
 
@@ -320,14 +310,12 @@ impl eframe::App for PixelSorterApp {
                         ui.label("3: Threshold ↑");
                         ui.label("4: Threshold ↓");
                         ui.label("5: Save Image");
-                        ui.label("F11/F/M: Force Fullscreen");
                         ui.label("ESC or Exit Button: Quit");
                     } else {
                         ui.separator();
                         ui.add_space(10.0);
                         ui.label("Keyboard Shortcuts:");
                         ui.label("1-5: Button functions");
-                        ui.label("F11/F/M: Force Fullscreen");
                         ui.label("ESC or Exit Button: Quit");
                     }
                 });
@@ -344,19 +332,6 @@ impl eframe::App for PixelSorterApp {
                         egui::Key::Num3 => self.on_button_press(3, ctx),
                         egui::Key::Num4 => self.on_button_press(4, ctx),
                         egui::Key::Num5 => self.on_button_press(5, ctx),
-                        egui::Key::F11 => {
-                            // Force fullscreen mode
-                            ctx.send_viewport_cmd(egui::ViewportCommand::Fullscreen(true));
-                            ctx.send_viewport_cmd(egui::ViewportCommand::Maximized(true));
-                        }
-                        egui::Key::F => {
-                            // Alternative fullscreen key
-                            ctx.send_viewport_cmd(egui::ViewportCommand::Fullscreen(true));
-                        }
-                        egui::Key::M => {
-                            // Maximize window
-                            ctx.send_viewport_cmd(egui::ViewportCommand::Maximized(true));
-                        }
                         egui::Key::Escape => std::process::exit(0),
                         _ => {}
                     }

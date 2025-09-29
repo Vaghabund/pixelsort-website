@@ -41,17 +41,17 @@ async fn main() -> Result<()> {
         }
     };
 
-    // HARD-CODED FULLSCREEN - Multiple approaches to ensure fullscreen
+    // KIOSK MODE: Borderless window that fills the entire screen
     let options = eframe::NativeOptions {
         viewport: egui::ViewportBuilder::default()
-            .with_fullscreen(true)                // Primary: Force fullscreen
-            .with_maximized(true)                 // Backup: Maximize if fullscreen fails
-            .with_inner_size([1024.0, 600.0])    // Fallback: Match screen size
-            .with_position([0.0, 0.0])            // Ensure top-left position
-            .with_decorations(false)              // Remove all window chrome
-            .with_resizable(false)                // Lock window size
-            .with_always_on_top()                 // Force on top
-            .with_window_level(egui::WindowLevel::AlwaysOnTop), // Additional always on top
+            .with_inner_size([1024.0, 600.0])    // Exact screen size
+            .with_position([0.0, 0.0])            // Top-left corner (no gaps)
+            .with_decorations(false)              // NO title bar, borders, or buttons
+            .with_resizable(false)                // Cannot be resized
+            .with_movable(false)                  // Cannot be moved
+            .with_close_button(false)             // No close button
+            .with_minimize_button(false)          // No minimize button
+            .with_maximize_button(false),         // No maximize button
         ..Default::default()
     };
 
@@ -82,11 +82,11 @@ async fn main() -> Result<()> {
 fn setup_touch_style(ctx: &egui::Context) {
     let mut style = (*ctx.style()).clone();
     
-    // Larger UI elements for touch interaction
+    // Kiosk-style UI with minimal margins
     style.spacing.button_padding = egui::vec2(16.0, 12.0);
-    style.spacing.item_spacing = egui::vec2(12.0, 8.0);
-    style.spacing.window_margin = egui::Margin::same(16.0);
-    style.spacing.menu_margin = egui::Margin::same(8.0);
+    style.spacing.item_spacing = egui::vec2(8.0, 6.0);
+    style.spacing.window_margin = egui::Margin::same(4.0);  // Minimal margins
+    style.spacing.menu_margin = egui::Margin::same(4.0);
     
     // Larger text for better readability
     style.text_styles.insert(
