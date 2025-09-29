@@ -6,7 +6,11 @@ use anyhow::Result;
 
 use crate::config::Config;
 use crate::gpio_controller::GpioController;
-use crat                    if ui.add_sized([200.0, 50.0], egui::Button::new("🚪 Exit")).clicked() {ge_processor::ImageProcessor;
+use cr                    ui.add_space(10.0);
+
+                    if ui.add_sized([200.0, 50.0], egui::Button::new("🚪 Exit")).clicked() {
+                        std::process::exit(0);
+                    }_processor::ImageProcessor;
 use crate::pixel_sorter::{PixelSorter, SortingAlgorithm, SortingParameters};
 
 pub struct PixelSorterApp {
