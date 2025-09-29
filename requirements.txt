@@ -1,0 +1,20 @@
+# Core dependencies for Raspberry Pi Pixel Sorter
+Pillow>=10.0.0          # Image processing library
+numpy>=1.24.0           # Numerical operations for pixel manipulation
+tkinter                 # GUI framework (usually included with Python)
+
+# Raspberry Pi specific dependencies
+RPi.GPIO>=0.7.1         # GPIO control for button inputs (Raspberry Pi only)
+
+# Optional dependencies for development
+keyboard>=0.13.5        # Keyboard simulation for development on non-Pi systems
+
+# Additional image format support (optional)
+# Uncomment if you need these specific formats
+# opencv-python>=4.8.0  # Advanced image processing (heavy dependency)
+# matplotlib>=3.7.0     # For image visualization and analysis
+
+# Development and testing (optional)
+# pytest>=7.4.0         # Unit testing framework
+# black>=23.0.0         # Code formatting
+# flake8>=6.0.0         # Code linting
