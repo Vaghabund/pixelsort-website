@@ -51,7 +51,7 @@ async fn main() -> Result<()> {
             .with_resizable(false)
             .with_maximized(true)     // Maximize window
             .with_fullscreen(true)    // Always start in fullscreen
-            .with_always_on_top(true), // Keep on top
+            .with_always_on_top(),    // Keep on top
         ..Default::default()
     };
 
