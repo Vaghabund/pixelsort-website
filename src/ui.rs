@@ -7,7 +7,6 @@ use anyhow::Result;
 use crate::config::Config;
 use crate::gpio_controller::GpioController;
 use crate::image_processor::ImageProcessor;
-                    }_processor::ImageProcessor;
 use crate::pixel_sorter::{PixelSorter, SortingAlgorithm, SortingParameters};
 
 pub struct PixelSorterApp {
