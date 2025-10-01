@@ -34,6 +34,7 @@ pub struct PixelSorterApp {
     pub iteration_counter: u32,
     pub current_session_folder: Option<String>,
     pub last_camera_update: Option<Instant>,
+    pub camera_image_data: Option<image::RgbImage>,
 }
 
 impl PixelSorterApp {
@@ -66,6 +67,7 @@ impl PixelSorterApp {
             iteration_counter: 0,
             current_session_folder: None,
             last_camera_update: None,
+            camera_image_data: None,
         }
     }
 
@@ -81,7 +83,7 @@ impl eframe::App for PixelSorterApp {
             let now = Instant::now();
             let should_update = match self.last_camera_update {
                 None => true,
-                Some(last) => now.duration_since(last) >= Duration::from_millis(42), // ~24 FPS for smooth preview
+                Some(last) => now.duration_since(last) >= Duration::from_millis(100), // 10 FPS - more stable
             };
 
             if should_update {
@@ -95,7 +97,20 @@ impl eframe::App for PixelSorterApp {
 
                     match preview_result {
                         Ok(preview_image) => {
-                            self.create_camera_texture(ctx, preview_image);
+                            // Only update texture if image data actually changed or this is the first frame
+                            let should_update_texture = match &self.camera_image_data {
+                                None => true,
+                                Some(old_image) => {
+                                    // Simple comparison - if dimensions changed, definitely update
+                                    old_image.width() != preview_image.width() ||
+                                    old_image.height() != preview_image.height()
+                                }
+                            };
+                            
+                            if should_update_texture {
+                                self.camera_image_data = Some(preview_image.clone());
+                                self.create_camera_texture(ctx, preview_image);
+                            }
                             self.last_camera_update = Some(now);
                         }
                         Err(_) => {
@@ -227,37 +242,16 @@ impl eframe::App for PixelSorterApp {
 
         // Central panel for image display - camera feed or processed image
         egui::CentralPanel::default().show(ctx, |ui| {
-            // Use a more stable layout approach
-            let available_rect = ui.available_rect_before_wrap();
-            
             if self.preview_mode {
                 // Show camera preview or prompt
                 if let Some(ref _camera) = self.camera_controller {
                     if let Some(texture) = &self.camera_texture {
-                        let texture_size = texture.size_vec2();
-                        
-                        // Calculate scale to fit within available space with some margin
-                        let margin = 20.0;
-                        let available_size = egui::vec2(
-                            available_rect.width() - margin,
-                            available_rect.height() - margin
-                        );
-                        
-                        let scale = (available_size.x / texture_size.x)
-                            .min(available_size.y / texture_size.y)
-                            .min(1.0);
-                        let display_size = texture_size * scale;
-
-                        // Center the image manually
-                        let image_rect = egui::Rect::from_center_size(
-                            available_rect.center(),
-                            display_size
-                        );
-
-                        ui.allocate_ui_at_rect(image_rect, |ui| {
+                        // Use FIXED size to eliminate any scaling feedback loops
+                        ui.centered_and_justified(|ui| {
+                            let fixed_size = egui::vec2(640.0, 480.0); // Fixed camera preview size
                             ui.add(
                                 egui::Image::new(texture)
-                                    .fit_to_exact_size(display_size)
+                                    .fit_to_exact_size(fixed_size)
                                     .rounding(egui::Rounding::same(8.0))
                             );
                         });
@@ -274,30 +268,12 @@ impl eframe::App for PixelSorterApp {
             } else {
                 // Show processed image
                 if let Some(texture) = &self.processed_texture {
-                    let texture_size = texture.size_vec2();
-                    
-                    // Calculate scale to fit within available space with some margin
-                    let margin = 20.0;
-                    let available_size = egui::vec2(
-                        available_rect.width() - margin,
-                        available_rect.height() - margin
-                    );
-                    
-                    let scale = (available_size.x / texture_size.x)
-                        .min(available_size.y / texture_size.y)
-                        .min(1.0);
-                    let display_size = texture_size * scale;
-
-                    // Center the image manually
-                    let image_rect = egui::Rect::from_center_size(
-                        available_rect.center(),
-                        display_size
-                    );
-
-                    ui.allocate_ui_at_rect(image_rect, |ui| {
+                    // Use simple fit_to_size without complex calculations
+                    ui.centered_and_justified(|ui| {
                         ui.add(
                             egui::Image::new(texture)
-                                .fit_to_exact_size(display_size)
+                                .max_size(ui.available_size())
+                                .fit_to_original_size(1.0)
                                 .rounding(egui::Rounding::same(8.0))
                         );
                     });
