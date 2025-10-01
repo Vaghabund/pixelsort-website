@@ -44,13 +44,15 @@ async fn main() -> Result<()> {
     };
 
     // Initialize Camera controller  
+    info!("🔍 DEBUG: Attempting to initialize camera controller...");
     let camera_controller = match CameraController::new() {
         Ok(controller) => {
-            info!("Camera controller initialized successfully");
+            info!("✅ DEBUG: Camera controller initialized successfully");
+            info!("🔍 DEBUG: Camera available: {}", controller.is_available());
             Some(Arc::new(RwLock::new(controller)))
         }
         Err(e) => {
-            log::warn!("Camera initialization failed: {}. Camera features disabled.", e);
+            log::error!("❌ DEBUG: Camera initialization failed: {}. Camera features disabled.", e);
             None
         }
     };

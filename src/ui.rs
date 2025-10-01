@@ -279,17 +279,23 @@ impl PixelSorterApp {
             return;
         }
         
+        log::debug!("🔍 DEBUG: update_preview called");
+        
         if let Some(ref camera) = self.camera_controller {
+            log::debug!("🔍 DEBUG: Camera controller exists, getting preview...");
             // Get latest preview image
             let preview_result = tokio::task::block_in_place(|| {
                 tokio::runtime::Handle::current().block_on(async {
+                    log::debug!("🔍 DEBUG: Acquiring camera write lock...");
                     let mut camera_lock = camera.write().await;
+                    log::debug!("🔍 DEBUG: Got camera lock, calling get_preview_image...");
                     camera_lock.get_preview_image()
                 })
             });
 
             match preview_result {
                 Ok(rgb_img) => {
+                    log::debug!("✅ DEBUG: Got preview image: {}x{}", rgb_img.width(), rgb_img.height());
                     self.preview_image = Some(rgb_img.clone());
                     
                     // Update preview texture
@@ -307,17 +313,22 @@ impl PixelSorterApp {
                     self.preview_texture = Some(ctx.load_texture("preview_image", color_image, egui::TextureOptions::default()));
                     self.last_preview_update = std::time::Instant::now();
                     
+                    log::debug!("✅ DEBUG: Preview texture created and updated");
+                    
                     // Update status to show preview is working
                     if self.status_message.starts_with("Camera preview") || self.status_message.contains("Failed") {
                         self.status_message = "Live preview active - Press button to capture!".to_string();
                     }
                 }
                 Err(e) => {
+                    log::error!("❌ DEBUG: Preview error: {}", e);
                     // Update status message to show what's wrong
                     self.status_message = format!("Camera preview error: {}", e);
                     self.last_preview_update = std::time::Instant::now();
                 }
             }
+        } else {
+            log::debug!("🔍 DEBUG: No camera controller available");
         }
     }
 
@@ -366,6 +377,7 @@ impl eframe::App for PixelSorterApp {
 
         // Start camera preview on first update
         if self.preview_mode && !self.preview_started {
+            log::debug!("🔍 DEBUG: Starting camera preview for first time");
             self.start_camera_preview();
         }
 

@@ -52,26 +52,31 @@ impl CameraController {
 
     /// Initialize the camera by checking if rpicam-still is available
     pub fn initialize(&mut self) -> Result<()> {
-        log::info!("Initializing camera controller...");
+        log::info!("🔍 DEBUG: Initializing camera controller...");
         
         // Check if rpicam-still command is available
+        log::info!("🔍 DEBUG: Testing rpicam-still command...");
         match Command::new("rpicam-still").arg("--help").output() {
             Ok(output) => {
                 self.is_available = true;
-                log::info!("Raspberry Pi Camera initialized successfully (using rpicam-still)");
+                log::info!("✅ DEBUG: rpicam-still found and working");
+                log::info!("✅ DEBUG: Raspberry Pi Camera initialized successfully (using rpicam-still)");
                 log::debug!("rpicam-still help output: {}", String::from_utf8_lossy(&output.stdout));
                 Ok(())
             }
             Err(e) => {
-                log::warn!("rpicam-still not found: {}", e);
+                log::warn!("❌ DEBUG: rpicam-still not found: {}", e);
+                log::info!("🔍 DEBUG: Trying raspistill fallback...");
                 // Try legacy raspistill as fallback
                 match Command::new("raspistill").arg("-?").output() {
                     Ok(_) => {
                         self.is_available = true;
+                        log::info!("✅ DEBUG: raspistill found - using legacy mode");
                         log::info!("Raspberry Pi Camera initialized successfully (using legacy raspistill)");
                         Ok(())
                     }
                     Err(e) => {
+                        log::error!("❌ DEBUG: Neither rpicam-still nor raspistill found: {}", e);
                         log::error!("Camera initialization failed - neither rpicam-still nor raspistill found: {}", e);
                         self.is_available = false;
                         Ok(()) // Don't fail completely, just disable camera
@@ -129,7 +134,10 @@ impl CameraController {
 
     /// Get the latest preview image with timing control (non-blocking)
     pub fn get_preview_image(&mut self) -> Result<RgbImage> {
+        log::debug!("🔍 DEBUG: get_preview_image called, is_available: {}", self.is_available);
+        
         if !self.is_available {
+            log::debug!("🔍 DEBUG: Camera not available, returning test pattern");
             // Return animated test pattern if camera not available
             let time = std::time::SystemTime::now()
                 .duration_since(std::time::UNIX_EPOCH)
@@ -148,13 +156,16 @@ impl CameraController {
         // Throttle preview updates to avoid the lag we experienced
         let now = Instant::now();
         if now.duration_since(self.last_preview_update) < self.preview_interval {
+            log::debug!("🔍 DEBUG: Throttling - returning existing preview");
             // Return last captured frame or placeholder
             return self.load_existing_preview_or_placeholder();
         }
         
+        log::debug!("🔍 DEBUG: Time to capture new preview frame");
         self.last_preview_update = now;
 
         // Capture fresh preview using the working --nopreview approach
+        log::debug!("🔍 DEBUG: Running rpicam-still command...");
         let result = Command::new("rpicam-still")
             .args(&[
                 "-o", &self.temp_preview_path,
@@ -170,25 +181,31 @@ impl CameraController {
         match result {
             Ok(output) => {
                 if !output.status.success() {
-                    log::warn!("Preview capture failed: {}", String::from_utf8_lossy(&output.stderr));
+                    log::warn!("❌ DEBUG: Preview capture failed with status: {}", output.status);
+                    log::warn!("❌ DEBUG: stderr: {}", String::from_utf8_lossy(&output.stderr));
+                    log::warn!("❌ DEBUG: stdout: {}", String::from_utf8_lossy(&output.stdout));
                     return self.load_existing_preview_or_placeholder();
+                } else {
+                    log::debug!("✅ DEBUG: rpicam-still command succeeded");
                 }
             }
             Err(e) => {
-                log::error!("Preview command failed: {}", e);
+                log::error!("❌ DEBUG: Preview command execution failed: {}", e);
                 return self.load_existing_preview_or_placeholder();
             }
         }
 
         // Load the captured preview
+        log::debug!("🔍 DEBUG: Loading preview image from: {}", self.temp_preview_path);
         match image::open(&self.temp_preview_path) {
             Ok(img) => {
                 let rgb_img = img.to_rgb8();
-                log::debug!("Preview captured: {}x{}", rgb_img.width(), rgb_img.height());
+                log::debug!("✅ DEBUG: Preview loaded successfully: {}x{}", rgb_img.width(), rgb_img.height());
                 Ok(rgb_img)
             }
             Err(e) => {
-                log::debug!("Failed to load preview image: {}", e);
+                log::error!("❌ DEBUG: Failed to load preview image: {}", e);
+                log::debug!("🔍 DEBUG: Falling back to placeholder");
                 self.load_existing_preview_or_placeholder()
             }
         }
