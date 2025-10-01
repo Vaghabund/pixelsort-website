@@ -577,7 +577,7 @@ impl PixelSorterApp {
                         if usb_path.is_dir() {
                             // Try to copy sorted_images folder to USB
                             let dest_path = usb_path.join("sorted_images");
-                            if let Ok(()) = self.copy_directory(PathBuf::from("sorted_images"), &dest_path) {
+                            if let Ok(()) = self.copy_directory(PathBuf::from("sorted_images"), dest_path.clone()) {
                                 println!("Successfully copied to USB: {}", dest_path.display());
                                 usb_found = true;
                                 break;
