@@ -656,13 +656,13 @@ impl PixelSorterApp {
             if self.iteration_counter > 0 {
                 // Load the last saved iteration as the new source
                 let session_dir = PathBuf::from("sorted_images").join(session_folder);
-                let last_iteration_pattern = format!("edit_{:03}_*.png", self.iteration_counter);
                 
                 // Find the last saved file
+                let iteration_prefix = format!("edit_{:03}_", self.iteration_counter);
                 for entry in std::fs::read_dir(&session_dir)? {
                     let entry = entry?;
                     let filename = entry.file_name().to_string_lossy().to_string();
-                    if filename.starts_with(&format!("edit_{:03}_", self.iteration_counter)) {
+                    if filename.starts_with(&iteration_prefix) {
                         // Load this image as the new original
                         let image_path = entry.path();
                         match image::open(&image_path) {
@@ -682,8 +682,10 @@ impl PixelSorterApp {
 
     fn save_and_continue_iteration(&mut self, ctx: &egui::Context) {
         if let Some(ref processed) = self.processed_image.clone() {
+            // Extract algorithm to avoid borrow conflict
+            let algorithm = self.current_algorithm;
             // Save the current iteration using the existing auto-save system
-            match self.auto_save_image(&processed, &self.current_algorithm) {
+            match self.auto_save_image(&processed, &algorithm) {
                 Ok(_saved_path) => {
                     // Load the saved image as the new source for next iteration
                     if let Ok(()) = self.load_last_iteration_as_source() {
