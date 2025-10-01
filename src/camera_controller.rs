@@ -209,7 +209,7 @@ impl CameraController {
         self.is_available
     }
 
-    /// Start live preview (continuous capture for preview)
+    /// Start live preview (just mark as available)
     pub fn start_preview(&mut self) -> Result<()> {
         log::info!("Starting camera preview...");
         
@@ -218,36 +218,10 @@ impl CameraController {
             return Err(anyhow!("Camera not available"));
         }
 
-        // Stop any existing preview
-        self.stop_preview();
-
-        // Start rpicam in continuous preview mode
-        let mut cmd = Command::new("rpicam-still");
-        let args = [
-            "-o", &self.preview_image_path,
-            "--width", "800",  // Use smaller resolution for preview
-            "--height", "600",
-            "--quality", "70",  // Lower quality for faster preview
-            "--timeout", "0",   // Continuous mode
-            "--nopreview",      // No system preview window
-            "--signal",         // Enable signal capture for updates
-            "--loop"            // Continuous capture
-        ];
-        
-        log::info!("Preview command: rpicam-still {}", args.join(" "));
-        cmd.args(&args);
-
-        match cmd.spawn() {
-            Ok(child) => {
-                self.preview_process = Some(child);
-                log::info!("Camera preview started successfully");
-                Ok(())
-            }
-            Err(e) => {
-                log::error!("Failed to start camera preview: {}", e);
-                Err(anyhow!("Failed to start preview: {}", e))
-            }
-        }
+        // For rpicam-still, we don't need a continuous process
+        // We'll capture preview images on-demand in get_preview_image()
+        log::info!("Camera preview mode enabled");
+        Ok(())
     }
 
     /// Stop live preview
@@ -263,7 +237,7 @@ impl CameraController {
     pub fn get_preview_image(&self) -> Result<RgbImage> {
         if !self.is_available {
             log::debug!("Camera not available, returning test pattern");
-            // Return test pattern if camera not available
+            // Return animated test pattern if camera not available
             let img = ImageBuffer::from_fn(800, 600, |x, y| {
                 let time = std::time::SystemTime::now()
                     .duration_since(std::time::UNIX_EPOCH)
@@ -278,17 +252,36 @@ impl CameraController {
             return Ok(img);
         }
 
-        // Check if preview file exists and get its metadata
-        if !std::path::Path::new(&self.preview_image_path).exists() {
-            log::warn!("Preview image file doesn't exist: {}", self.preview_image_path);
-            return Err(anyhow!("Preview image file not found"));
+        // Capture a fresh preview image each time
+        let result = Command::new("rpicam-still")
+            .args(&[
+                "-o", &self.preview_image_path,
+                "--width", "800",
+                "--height", "600", 
+                "--quality", "60",  // Lower quality for speed
+                "--timeout", "50",  // Very quick capture
+                "--nopreview"
+            ])
+            .output();
+
+        match result {
+            Ok(output) => {
+                if !output.status.success() {
+                    log::warn!("rpicam-still preview capture failed: {}", String::from_utf8_lossy(&output.stderr));
+                    return Err(anyhow!("Preview capture failed"));
+                }
+            }
+            Err(e) => {
+                log::error!("Failed to run rpicam-still for preview: {}", e);
+                return Err(anyhow!("Preview command failed: {}", e));
+            }
         }
 
         // Try to load the preview image
         match image::open(&self.preview_image_path) {
             Ok(img) => {
                 let rgb_img = img.to_rgb8();
-                log::debug!("Successfully loaded preview image: {}x{}", rgb_img.width(), rgb_img.height());
+                log::debug!("Successfully captured and loaded preview image: {}x{}", rgb_img.width(), rgb_img.height());
                 Ok(rgb_img)
             }
             Err(_) => {
