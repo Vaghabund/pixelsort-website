@@ -41,16 +41,16 @@ async fn main() -> Result<()> {
         }
     };
 
-    // KIOSK MODE: Borderless window that fills the entire screen
+    // WINDOWED MODE: Normal window with decorations for manual resizing
     let options = eframe::NativeOptions {
         viewport: egui::ViewportBuilder::default()
-            .with_inner_size([1024.0, 600.0])    // Exact screen size
-            .with_position([0.0, 0.0])            // Top-left corner (no gaps)
-            .with_decorations(false)              // NO title bar, borders, or buttons
-            .with_resizable(false)                // Cannot be resized
-            .with_close_button(false)             // No close button
-            .with_minimize_button(false)          // No minimize button
-            .with_maximize_button(false),         // No maximize button
+            .with_inner_size([800.0, 600.0])     // Initial size (can be resized)
+            .with_min_inner_size([400.0, 300.0]) // Minimum size
+            .with_decorations(true)               // Show title bar, borders, and buttons
+            .with_resizable(true)                 // Can be resized
+            .with_close_button(true)              // Show close button
+            .with_minimize_button(true)           // Show minimize button
+            .with_maximize_button(true),          // Show maximize button
         ..Default::default()
     };
 
