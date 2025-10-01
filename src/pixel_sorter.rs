@@ -3,7 +3,7 @@ use anyhow::Result;
 use image::{Rgb, RgbImage};
 use std::cmp::Ordering;
 
-#[derive(Debug, Clone, Copy)]
+#[derive(Debug, Clone, Copy, PartialEq)]
 pub enum SortingAlgorithm {
     Horizontal,
     Vertical,

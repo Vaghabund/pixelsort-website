@@ -1,6 +1,6 @@
 use std::sync::Arc;
 use std::path::PathBuf;
-use std::time::{Instant, Duration};
+use std::time::Instant;
 use eframe::egui;
 use image;
 use rfd;
