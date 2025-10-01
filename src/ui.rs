@@ -83,7 +83,7 @@ impl eframe::App for PixelSorterApp {
             let now = Instant::now();
             let should_update = match self.last_camera_update {
                 None => true,
-                Some(last) => now.duration_since(last) >= std::time::Duration::from_millis(33), // 30 FPS - standard smooth video
+                Some(last) => now.duration_since(last) >= std::time::Duration::from_millis(100), // 10 FPS - smooth but not laggy
             };
 
             if should_update {
