@@ -225,46 +225,86 @@ impl eframe::App for PixelSorterApp {
 
         // Central panel for image display - camera feed or processed image
         egui::CentralPanel::default().show(ctx, |ui| {
-            // Center the image in the available space
-            ui.centered_and_justified(|ui| {
-                if self.preview_mode {
-                    // Show camera preview or prompt
-                    if let Some(ref _camera) = self.camera_controller {
-                        if let Some(texture) = &self.current_texture {
-                            let available_size = ui.available_size();
-                            let texture_size = texture.size_vec2();
-                            let scale = (available_size.x / texture_size.x).min(available_size.y / texture_size.y).min(1.0);
-                            let display_size = texture_size * scale;
+            // Use a more stable layout approach
+            let available_rect = ui.available_rect_before_wrap();
+            
+            if self.preview_mode {
+                // Show camera preview or prompt
+                if let Some(ref _camera) = self.camera_controller {
+                    if let Some(texture) = &self.current_texture {
+                        let texture_size = texture.size_vec2();
+                        
+                        // Calculate scale to fit within available space with some margin
+                        let margin = 20.0;
+                        let available_size = egui::vec2(
+                            available_rect.width() - margin,
+                            available_rect.height() - margin
+                        );
+                        
+                        let scale = (available_size.x / texture_size.x)
+                            .min(available_size.y / texture_size.y)
+                            .min(1.0);
+                        let display_size = texture_size * scale;
 
+                        // Center the image manually
+                        let image_rect = egui::Rect::from_center_size(
+                            available_rect.center(),
+                            display_size
+                        );
+
+                        ui.allocate_ui_at_rect(image_rect, |ui| {
                             ui.add(
                                 egui::Image::new(texture)
                                     .fit_to_exact_size(display_size)
                                     .rounding(egui::Rounding::same(8.0))
                             );
-                        } else {
-                            ui.label("Initializing camera...");
-                        }
+                        });
                     } else {
-                        ui.label("No camera available - Load an image to begin");
+                        ui.centered_and_justified(|ui| {
+                            ui.label("Initializing camera...");
+                        });
                     }
                 } else {
-                    // Show processed image
-                    if let Some(texture) = &self.current_texture {
-                        let available_size = ui.available_size();
-                        let texture_size = texture.size_vec2();
-                        let scale = (available_size.x / texture_size.x).min(available_size.y / texture_size.y).min(1.0);
-                        let display_size = texture_size * scale;
+                    ui.centered_and_justified(|ui| {
+                        ui.label("No camera available - Load an image to begin");
+                    });
+                }
+            } else {
+                // Show processed image
+                if let Some(texture) = &self.current_texture {
+                    let texture_size = texture.size_vec2();
+                    
+                    // Calculate scale to fit within available space with some margin
+                    let margin = 20.0;
+                    let available_size = egui::vec2(
+                        available_rect.width() - margin,
+                        available_rect.height() - margin
+                    );
+                    
+                    let scale = (available_size.x / texture_size.x)
+                        .min(available_size.y / texture_size.y)
+                        .min(1.0);
+                    let display_size = texture_size * scale;
 
+                    // Center the image manually
+                    let image_rect = egui::Rect::from_center_size(
+                        available_rect.center(),
+                        display_size
+                    );
+
+                    ui.allocate_ui_at_rect(image_rect, |ui| {
                         ui.add(
                             egui::Image::new(texture)
                                 .fit_to_exact_size(display_size)
                                 .rounding(egui::Rounding::same(8.0))
                         );
-                    } else {
+                    });
+                } else {
+                    ui.centered_and_justified(|ui| {
                         ui.label("No processed image to display");
-                    }
+                    });
                 }
-            });
+            }
         });
 
         // Handle keyboard input for GPIO simulation
@@ -430,7 +470,15 @@ impl PixelSorterApp {
         let pixels = image.as_flat_samples();
         
         let color_image = egui::ColorImage::from_rgb(size, pixels.as_slice());
-        let texture = ctx.load_texture("processed_image", color_image, egui::TextureOptions::LINEAR);
+        
+        // Use unique texture name with timestamp to avoid conflicts
+        let texture_name = if self.preview_mode {
+            format!("camera_preview_{}", std::time::SystemTime::now().duration_since(std::time::UNIX_EPOCH).unwrap_or_default().as_millis())
+        } else {
+            format!("processed_image_{}", std::time::SystemTime::now().duration_since(std::time::UNIX_EPOCH).unwrap_or_default().as_millis())
+        };
+        
+        let texture = ctx.load_texture(texture_name, color_image, egui::TextureOptions::LINEAR);
         self.current_texture = Some(texture);
     }
 
