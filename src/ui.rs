@@ -26,6 +26,8 @@ pub struct PixelSorterApp {
     pub image_processor: Arc<RwLock<ImageProcessor>>,
     pub config: Config,
     pub preview_mode: bool,
+    pub iteration_counter: u32,
+    pub current_session_folder: Option<String>,
 }
 
 impl PixelSorterApp {
@@ -54,6 +56,8 @@ impl PixelSorterApp {
             image_processor,
             config,
             preview_mode: true,
+            iteration_counter: 0,
+            current_session_folder: None,
         }
     }
 
@@ -127,9 +131,14 @@ impl eframe::App for PixelSorterApp {
                             self.capture_and_sort(ctx);
                         }
                     } else {
-                        if ui.add_sized([200.0, 50.0], egui::Button::new("Back to Preview")).clicked() {
-                            self.preview_mode = true;
-                            self.status_message = "Live preview active - Press button to capture!".to_string();
+                        // Show iteration counter
+                        if self.iteration_counter > 0 {
+                            ui.label(format!("Edit #{}", self.iteration_counter));
+                            ui.add_space(5.0);
+                        }
+                        
+                        if ui.add_sized([200.0, 50.0], egui::Button::new("New Photo")).clicked() {
+                            self.start_new_photo_session();
                         }
                     }
 
@@ -137,8 +146,8 @@ impl eframe::App for PixelSorterApp {
                         self.load_image(ctx);
                     }
 
-                    if ui.add_sized([200.0, 50.0], egui::Button::new("Save Result")).clicked() {
-                        self.save_image();
+                    if ui.add_sized([200.0, 50.0], egui::Button::new("Save & Continue")).clicked() {
+                        self.save_and_continue_iteration(ctx);
                     }
 
                     if ui.add_sized([200.0, 50.0], egui::Button::new("Save to USB")).clicked() {
@@ -374,8 +383,13 @@ impl PixelSorterApp {
                     self.create_texture_from_image(ctx, sorted_image.clone());
                     
                     // Auto-save the processed image
-                    if let Err(_) = self.auto_save_image(&sorted_image, &algorithm) {
-                        // Silently handle auto-save errors to reduce logging overhead
+                    match self.auto_save_image(&sorted_image, &algorithm) {
+                        Ok(_saved_path) => {
+                            // Successfully saved - ready for potential iteration
+                        }
+                        Err(_) => {
+                            // Silently handle auto-save errors to reduce logging overhead
+                        }
                     }
                     
                     self.is_processing = false;
@@ -538,23 +552,33 @@ impl PixelSorterApp {
         self.status_message = format!("Button {} pressed - {}", button, self.current_algorithm.name());
     }
 
-    fn auto_save_image(&self, image: &image::RgbImage, algorithm: &SortingAlgorithm) -> Result<(), Box<dyn std::error::Error>> {
-        // Create sorted_images directory if it doesn't exist
-        let save_dir = PathBuf::from("sorted_images");
-        std::fs::create_dir_all(&save_dir)?;
+    fn auto_save_image(&mut self, image: &image::RgbImage, algorithm: &SortingAlgorithm) -> Result<PathBuf, Box<dyn std::error::Error>> {
+        // Create session folder if this is the first save
+        if self.current_session_folder.is_none() {
+            let now: DateTime<Local> = Local::now();
+            let session_folder = format!("session_{}", now.format("%Y%m%d_%H%M%S"));
+            self.current_session_folder = Some(session_folder.clone());
+            self.iteration_counter = 0;
+        }
         
-        // Generate timestamp-based filename
-        let now: DateTime<Local> = Local::now();
-        let filename = format!("pixelsort_{}_{}.png", 
-            algorithm.name().to_lowercase(),
-            now.format("%Y%m%d_%H%M%S")
+        // Create session directory
+        let session_dir = PathBuf::from("sorted_images").join(self.current_session_folder.as_ref().unwrap());
+        std::fs::create_dir_all(&session_dir)?;
+        
+        // Increment iteration counter for this save
+        self.iteration_counter += 1;
+        
+        // Generate iteration-based filename
+        let filename = format!("edit_{:03}_{}.png", 
+            self.iteration_counter,
+            algorithm.name().to_lowercase()
         );
         
-        let save_path = save_dir.join(filename);
+        let save_path = session_dir.join(filename);
         image.save(&save_path)?;
         
-        // Silently save without logging for better performance
-        Ok(())
+        // Return the path for potential loading in next iteration
+        Ok(save_path)
     }
 
     fn copy_to_usb(&self) -> Result<(), Box<dyn std::error::Error>> {
@@ -614,5 +638,68 @@ impl PixelSorterApp {
         }
 
         Ok(())
+    }
+
+    fn start_new_photo_session(&mut self) {
+        // Reset session state
+        self.iteration_counter = 0;
+        self.current_session_folder = None;
+        self.original_image = None;
+        self.processed_image = None;
+        self.current_texture = None;
+        self.preview_mode = true;
+        self.status_message = "Live preview active - Press button to capture!".to_string();
+    }
+
+    fn load_last_iteration_as_source(&mut self) -> Result<(), Box<dyn std::error::Error>> {
+        if let Some(ref session_folder) = self.current_session_folder {
+            if self.iteration_counter > 0 {
+                // Load the last saved iteration as the new source
+                let session_dir = PathBuf::from("sorted_images").join(session_folder);
+                let last_iteration_pattern = format!("edit_{:03}_*.png", self.iteration_counter);
+                
+                // Find the last saved file
+                for entry in std::fs::read_dir(&session_dir)? {
+                    let entry = entry?;
+                    let filename = entry.file_name().to_string_lossy().to_string();
+                    if filename.starts_with(&format!("edit_{:03}_", self.iteration_counter)) {
+                        // Load this image as the new original
+                        let image_path = entry.path();
+                        match image::open(&image_path) {
+                            Ok(img) => {
+                                let rgb_image = img.to_rgb8();
+                                self.original_image = Some(rgb_image);
+                                return Ok(());
+                            }
+                            Err(e) => return Err(e.into()),
+                        }
+                    }
+                }
+            }
+        }
+        Err("No previous iteration found to load".into())
+    }
+
+    fn save_and_continue_iteration(&mut self, ctx: &egui::Context) {
+        if let Some(ref processed) = self.processed_image.clone() {
+            // Save the current iteration using the existing auto-save system
+            match self.auto_save_image(&processed, &self.current_algorithm) {
+                Ok(_saved_path) => {
+                    // Load the saved image as the new source for next iteration
+                    if let Ok(()) = self.load_last_iteration_as_source() {
+                        // Process the loaded image immediately for preview
+                        self.apply_pixel_sort(ctx);
+                        self.status_message = format!("Saved iteration {} - Ready for next edit", self.iteration_counter);
+                    } else {
+                        self.status_message = "Save successful but couldn't load for iteration".to_string();
+                    }
+                }
+                Err(_) => {
+                    self.status_message = "Failed to save iteration".to_string();
+                }
+            }
+        } else {
+            self.status_message = "No processed image to save".to_string();
+        }
     }
 }
