@@ -35,15 +35,15 @@ impl CameraController {
             capture_width: 1024,
             capture_height: 768,
             quality: 90,  // High quality for pixel sorting
-            // Lower resolution for smooth preview
-            preview_width: 640,
-            preview_height: 480,
+            // Optimized resolution for smooth 30+ FPS preview
+            preview_width: 480,
+            preview_height: 360,
             temp_capture_path: "/tmp/pixelsort_capture.jpg".to_string(),
             temp_preview_path: "/tmp/pixelsort_preview.jpg".to_string(),
             is_available: false,
             preview_process: None,
             last_preview_update: Instant::now(),
-            preview_interval: Duration::from_millis(100), // 10 FPS preview
+            preview_interval: Duration::from_millis(33), // 30 FPS preview
         };
 
         controller.initialize()?;
@@ -129,16 +129,17 @@ impl CameraController {
             let _ = std::fs::remove_file(&self.temp_preview_path);
         }
 
-        // Fast capture with minimal settings for live preview
+        // Ultra-fast capture optimized for 30+ FPS
         let result = Command::new("rpicam-still")
             .args(&[
                 "-o", &self.temp_preview_path,
                 "--width", &self.preview_width.to_string(),
                 "--height", &self.preview_height.to_string(),
-                "--quality", "30",  // Lower quality for speed
-                "--timeout", "10",  // Very fast timeout
+                "--quality", "20",  // Very low quality for maximum speed
+                "--timeout", "5",   // Minimal timeout for 30+ FPS
                 "--nopreview",
-                "--immediate"
+                "--immediate",
+                "--encoding", "jpg" // Ensure JPEG for faster processing
             ])
             .output();
 

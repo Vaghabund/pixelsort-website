@@ -83,7 +83,7 @@ impl eframe::App for PixelSorterApp {
             let now = Instant::now();
             let should_update = match self.last_camera_update {
                 None => true,
-                Some(last) => now.duration_since(last) >= std::time::Duration::from_millis(66), // 15 FPS - more realistic for Pi
+                Some(last) => now.duration_since(last) >= std::time::Duration::from_millis(33), // 30 FPS - standard smooth video
             };
 
             if should_update {
@@ -190,27 +190,7 @@ impl eframe::App for PixelSorterApp {
                                     self.capture_and_sort(ctx);
                                 }
                                 
-                                // Manual refresh as backup (in case live feed has issues)
-                                if ui.button("Force Refresh").clicked() {
-                                    if let Some(ref camera) = self.camera_controller {
-                                        let preview_result = tokio::task::block_in_place(|| {
-                                            tokio::runtime::Handle::current().block_on(async {
-                                                let mut camera_lock = camera.write().await;
-                                                camera_lock.get_preview_image() // Use full quality method for manual refresh
-                                            })
-                                        });
 
-                                        match preview_result {
-                                            Ok(preview_image) => {
-                                                self.camera_image_data = Some(preview_image.clone());
-                                                self.create_camera_texture(ctx, preview_image);
-                                                // Reset timer to avoid immediate auto-refresh
-                                                self.last_camera_update = Some(Instant::now());
-                                            }
-                                            Err(_) => {}
-                                        }
-                                    }
-                                }
                             } else {
                                 if ui.button("New Photo").clicked() {
                                     self.start_new_photo_session();
