@@ -78,25 +78,32 @@ impl eframe::App for PixelSorterApp {
     fn update(&mut self, ctx: &egui::Context, _frame: &mut eframe::Frame) {
         // Camera preview is now handled directly in the update loop below
 
-        // Temporarily disable automatic camera updates to isolate the shrinking issue
-        // We'll add a manual refresh button instead
-        if self.camera_texture.is_none() && self.preview_mode && self.camera_controller.is_some() {
-            // Only capture one frame on startup
-            if let Some(ref camera) = self.camera_controller {
-                let preview_result = tokio::task::block_in_place(|| {
-                    tokio::runtime::Handle::current().block_on(async {
-                        let mut camera_lock = camera.write().await;
-                        camera_lock.get_preview_image()
-                    })
-                });
+        // Live camera updates with all stability fixes applied
+        if self.preview_mode && self.camera_controller.is_some() {
+            let now = Instant::now();
+            let should_update = match self.last_camera_update {
+                None => true,
+                Some(last) => now.duration_since(last) >= std::time::Duration::from_millis(200), // 5 FPS for stability
+            };
 
-                match preview_result {
-                    Ok(preview_image) => {
-                        self.camera_image_data = Some(preview_image.clone());
-                        self.create_camera_texture(ctx, preview_image);
-                    }
-                    Err(_) => {
-                        // Silently ignore preview errors
+            if should_update {
+                if let Some(ref camera) = self.camera_controller {
+                    let preview_result = tokio::task::block_in_place(|| {
+                        tokio::runtime::Handle::current().block_on(async {
+                            let mut camera_lock = camera.write().await;
+                            camera_lock.get_preview_image()
+                        })
+                    });
+
+                    match preview_result {
+                        Ok(preview_image) => {
+                            self.camera_image_data = Some(preview_image.clone());
+                            self.create_camera_texture(ctx, preview_image);
+                            self.last_camera_update = Some(now);
+                        }
+                        Err(_) => {
+                            // Silently ignore preview errors for better performance
+                        }
                     }
                 }
             }
@@ -183,8 +190,8 @@ impl eframe::App for PixelSorterApp {
                                     self.capture_and_sort(ctx);
                                 }
                                 
-                                // Refresh button for testing
-                                if ui.button("Refresh").clicked() {
+                                // Manual refresh as backup (in case live feed has issues)
+                                if ui.button("Force Refresh").clicked() {
                                     if let Some(ref camera) = self.camera_controller {
                                         let preview_result = tokio::task::block_in_place(|| {
                                             tokio::runtime::Handle::current().block_on(async {
@@ -197,6 +204,8 @@ impl eframe::App for PixelSorterApp {
                                             Ok(preview_image) => {
                                                 self.camera_image_data = Some(preview_image.clone());
                                                 self.create_camera_texture(ctx, preview_image);
+                                                // Reset timer to avoid immediate auto-refresh
+                                                self.last_camera_update = Some(Instant::now());
                                             }
                                             Err(_) => {}
                                         }
@@ -274,6 +283,11 @@ impl eframe::App for PixelSorterApp {
                 }
             }
         });
+
+        // Request continuous repaints when in camera preview mode for live feed
+        if self.preview_mode && self.camera_controller.is_some() {
+            ctx.request_repaint();
+        }
 
         // Only request continuous repaints when in preview mode
         if self.preview_mode && self.camera_controller.is_some() {
