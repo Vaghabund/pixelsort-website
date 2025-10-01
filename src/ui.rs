@@ -1,5 +1,6 @@
 use std::sync::Arc;
 use std::path::PathBuf;
+use std::time::{Instant, Duration};
 use eframe::egui;
 use image;
 use rfd;
@@ -31,6 +32,7 @@ pub struct PixelSorterApp {
     pub preview_mode: bool,
     pub iteration_counter: u32,
     pub current_session_folder: Option<String>,
+    pub last_camera_update: Option<Instant>,
 }
 
 impl PixelSorterApp {
@@ -61,57 +63,42 @@ impl PixelSorterApp {
             preview_mode: true,
             iteration_counter: 0,
             current_session_folder: None,
+            last_camera_update: None,
         }
     }
 
-    fn start_camera_preview(&self, ctx: &egui::Context) {
-        if let Some(ref camera) = self.camera_controller {
-            let camera = Arc::clone(camera);
-            let ctx_clone = ctx.clone();
-            
-            tokio::spawn(async move {
-                loop {
-                    let mut camera_lock = camera.write().await;
-                    match camera_lock.get_preview_image() {
-                        Ok(_preview) => {
-                            ctx_clone.request_repaint();
-                        }
-                        Err(_) => {
-                            // Silently ignore preview errors to reduce logging overhead
-                        }
-                    }
-                    drop(camera_lock);
-                    // Target 16 FPS: 1000ms / 16 = 62.5ms
-                    tokio::time::sleep(tokio::time::Duration::from_millis(62)).await;
-                }
-            });
-        }
-    }
+    // Camera preview is now handled directly in the main update loop with throttling
 }
 
 impl eframe::App for PixelSorterApp {
     fn update(&mut self, ctx: &egui::Context, _frame: &mut eframe::Frame) {
-        // Start camera preview on first update if we have a camera
-        if self.camera_controller.is_some() && self.current_texture.is_none() && self.preview_mode {
-            self.start_camera_preview(ctx);
-        }
+        // Camera preview is now handled directly in the update loop below
 
-        // Update camera preview texture if in preview mode
+        // Update camera preview texture if in preview mode (throttled to avoid conflicts)
         if self.preview_mode && self.camera_controller.is_some() {
-            if let Some(ref camera) = self.camera_controller {
-                let preview_result = tokio::task::block_in_place(|| {
-                    tokio::runtime::Handle::current().block_on(async {
-                        let mut camera_lock = camera.write().await;
-                        camera_lock.get_preview_image()
-                    })
-                });
+            let now = Instant::now();
+            let should_update = match self.last_camera_update {
+                None => true,
+                Some(last) => now.duration_since(last) >= Duration::from_millis(42), // ~24 FPS for smooth preview
+            };
 
-                match preview_result {
-                    Ok(preview_image) => {
-                        self.create_texture_from_image(ctx, preview_image);
-                    }
-                    Err(_) => {
-                        // Silently ignore preview errors for better performance
+            if should_update {
+                if let Some(ref camera) = self.camera_controller {
+                    let preview_result = tokio::task::block_in_place(|| {
+                        tokio::runtime::Handle::current().block_on(async {
+                            let mut camera_lock = camera.write().await;
+                            camera_lock.get_preview_image()
+                        })
+                    });
+
+                    match preview_result {
+                        Ok(preview_image) => {
+                            self.create_texture_from_image(ctx, preview_image);
+                            self.last_camera_update = Some(now);
+                        }
+                        Err(_) => {
+                            // Silently ignore preview errors for better performance
+                        }
                     }
                 }
             }
