@@ -279,23 +279,23 @@ impl PixelSorterApp {
             return;
         }
         
-        log::debug!("🔍 DEBUG: update_preview called");
+        log::info!("🔍 DEBUG: update_preview called");
         
         if let Some(ref camera) = self.camera_controller {
-            log::debug!("🔍 DEBUG: Camera controller exists, getting preview...");
+            log::info!("🔍 DEBUG: Camera controller exists, getting preview...");
             // Get latest preview image
             let preview_result = tokio::task::block_in_place(|| {
                 tokio::runtime::Handle::current().block_on(async {
-                    log::debug!("🔍 DEBUG: Acquiring camera write lock...");
+                    log::info!("🔍 DEBUG: Acquiring camera write lock...");
                     let mut camera_lock = camera.write().await;
-                    log::debug!("🔍 DEBUG: Got camera lock, calling get_preview_image...");
+                    log::info!("🔍 DEBUG: Got camera lock, calling get_preview_image...");
                     camera_lock.get_preview_image()
                 })
             });
 
             match preview_result {
                 Ok(rgb_img) => {
-                    log::debug!("✅ DEBUG: Got preview image: {}x{}", rgb_img.width(), rgb_img.height());
+                    log::info!("✅ DEBUG: Got preview image: {}x{}", rgb_img.width(), rgb_img.height());
                     self.preview_image = Some(rgb_img.clone());
                     
                     // Update preview texture
@@ -328,7 +328,7 @@ impl PixelSorterApp {
                 }
             }
         } else {
-            log::debug!("🔍 DEBUG: No camera controller available");
+            log::info!("🔍 DEBUG: No camera controller available");
         }
     }
 
@@ -377,7 +377,7 @@ impl eframe::App for PixelSorterApp {
 
         // Start camera preview on first update
         if self.preview_mode && !self.preview_started {
-            log::debug!("🔍 DEBUG: Starting camera preview for first time");
+            log::info!("🔍 DEBUG: Starting camera preview for first time");
             self.start_camera_preview();
         }
 

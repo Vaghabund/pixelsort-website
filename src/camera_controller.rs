@@ -134,10 +134,10 @@ impl CameraController {
 
     /// Get the latest preview image with timing control (non-blocking)
     pub fn get_preview_image(&mut self) -> Result<RgbImage> {
-        log::debug!("🔍 DEBUG: get_preview_image called, is_available: {}", self.is_available);
+        log::info!("🔍 DEBUG: get_preview_image called, is_available: {}", self.is_available);
         
         if !self.is_available {
-            log::debug!("🔍 DEBUG: Camera not available, returning test pattern");
+            log::info!("🔍 DEBUG: Camera not available, returning test pattern");
             // Return animated test pattern if camera not available
             let time = std::time::SystemTime::now()
                 .duration_since(std::time::UNIX_EPOCH)
@@ -156,16 +156,16 @@ impl CameraController {
         // Throttle preview updates to avoid the lag we experienced
         let now = Instant::now();
         if now.duration_since(self.last_preview_update) < self.preview_interval {
-            log::debug!("🔍 DEBUG: Throttling - returning existing preview");
+            log::info!("🔍 DEBUG: Throttling - returning existing preview");
             // Return last captured frame or placeholder
             return self.load_existing_preview_or_placeholder();
         }
         
-        log::debug!("🔍 DEBUG: Time to capture new preview frame");
+        log::info!("🔍 DEBUG: Time to capture new preview frame");
         self.last_preview_update = now;
 
         // Capture fresh preview using the working --nopreview approach
-        log::debug!("🔍 DEBUG: Running rpicam-still command...");
+        log::info!("🔍 DEBUG: Running rpicam-still command...");
         let result = Command::new("rpicam-still")
             .args(&[
                 "-o", &self.temp_preview_path,

@@ -20,8 +20,13 @@ use crate::camera_controller::CameraController;
 
 #[tokio::main]
 async fn main() -> Result<()> {
-    env_logger::init();
+    // Set up detailed logging
+    env_logger::Builder::from_default_env()
+        .filter_level(log::LevelFilter::Debug)
+        .init();
+    
     info!("🎨 Starting Raspberry Pi Pixel Sorter (Rust Edition)");
+    println!("🔍 DEBUG logging enabled - you should see detailed camera debug messages");
 
     // Load configuration
     let config = Config::load()?;
