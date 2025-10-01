@@ -386,44 +386,95 @@ impl eframe::App for PixelSorterApp {
             self.update_preview(ctx);
         }
 
-        // Make sure we use the full screen area
-        egui::CentralPanel::default()
-            .frame(egui::Frame::none()) // Remove any padding/margins
+        // Create a proper layout with side panel for controls
+        egui::SidePanel::right("controls")
+            .min_width(250.0)
+            .max_width(300.0)
             .show(ctx, |ui| {
-            ui.horizontal(|ui| {
-                // Left panel - Image display
-                ui.vertical(|ui| {
-                    if self.preview_mode {
-                        ui.heading("Live Camera Preview");
-                    } else {
-                        ui.heading("Pixel Sorted Result");
+                ui.heading("Controls");
+                
+                // Mode indicator
+                ui.separator();
+                if self.preview_mode {
+                    ui.label("📹 Live Camera Mode");
+                    
+                    ui.add_space(10.0);
+                    if ui.button("📸 Capture & Sort").clicked() {
+                        self.capture_and_sort(ctx);
+                    }
+                } else {
+                    ui.label("🎨 Editing Mode");
+                    
+                    ui.add_space(10.0);
+                    if ui.button("💾 Save & Back to Camera").clicked() {
+                        self.save_and_return_to_camera();
                     }
                     
-                    // Display appropriate image based on mode                    
+                    ui.add_space(10.0);
+                    if ui.button("🔄 Apply Sort").clicked() {
+                        self.apply_pixel_sort(ctx);
+                    }
+                }
+                
+                ui.separator();
+                ui.add_space(10.0);
+                
+                // Sorting algorithm selection
+                ui.label("Algorithm:");
+                egui::ComboBox::from_label("")
+                    .selected_text(format!("{:?}", self.current_algorithm))
+                    .show_ui(ui, |ui| {
+                        ui.selectable_value(&mut self.current_algorithm, SortingAlgorithm::Horizontal, "Horizontal");
+                        ui.selectable_value(&mut self.current_algorithm, SortingAlgorithm::Vertical, "Vertical");
+                        ui.selectable_value(&mut self.current_algorithm, SortingAlgorithm::Diagonal, "Diagonal");
+                        ui.selectable_value(&mut self.current_algorithm, SortingAlgorithm::Radial, "Radial");
+                    });
+                
+                ui.add_space(10.0);
+                
+                // Parameters
+                ui.label("Threshold:");
+                ui.add(egui::Slider::new(&mut self.sorting_params.threshold, 0.0..=1.0));
+                
+                ui.add_space(10.0);
+                ui.label("Intensity:");
+                ui.add(egui::Slider::new(&mut self.sorting_params.intensity, 0.0..=1.0));
+                
+                ui.separator();
+                ui.add_space(10.0);
+                
+                // Status
+                ui.label("Status:");
+                ui.label(&self.status_message);
+            });
+
+        // Main central panel for image display
+        egui::CentralPanel::default()
+            .show(ctx, |ui| {
+                if self.preview_mode {
+                    ui.heading("📹 Live Camera Preview");
+                } else {
+                    ui.heading("🎨 Pixel Sorted Image");
+                }
+                
+                // Center the image content
+                ui.centered_and_justified(|ui| {
                     if self.is_processing {
-                        let placeholder_size = egui::vec2(400.0, 300.0);
-                        ui.allocate_ui_with_layout(
-                            placeholder_size,
-                            egui::Layout::centered_and_justified(egui::Direction::TopDown),
-                            |ui| {
-                                ui.spinner();
-                                ui.label("Processing...");
-                            },
-                        );
+                        ui.vertical_centered(|ui| {
+                            ui.spinner();
+                            ui.label("Processing...");
+                        });
                     } else if self.preview_mode {
                         // Show live camera preview
                         if let Some(ref texture) = self.preview_texture {
-                            log::info!("✅ DEBUG: Displaying preview texture, size: {:?}", texture.size_vec2());
                             let available_size = ui.available_size();
                             let image_size = texture.size_vec2();
                             
-                            log::info!("🔍 DEBUG: Available UI size: {:?}, Image size: {:?}", available_size, image_size);
-                            
-                            // Calculate display size maintaining aspect ratio
-                            let scale = (available_size.x / image_size.x).min(available_size.y / image_size.y).min(1.0);
+                            // Calculate display size maintaining aspect ratio, leave some margin
+                            let margin = 40.0;
+                            let max_size = egui::vec2(available_size.x - margin, available_size.y - margin);
+                            let scale = (max_size.x / image_size.x).min(max_size.y / image_size.y).min(1.0);
                             let display_size = image_size * scale;
-                            
-                            log::info!("🔍 DEBUG: Display size: {:?}, Scale: {}", display_size, scale);
                             
                             ui.add(
                                 egui::Image::from_texture(texture)
@@ -431,55 +482,33 @@ impl eframe::App for PixelSorterApp {
                                     .rounding(egui::Rounding::same(8.0))
                             );
                         } else {
-                            log::info!("❌ DEBUG: No preview texture available, showing placeholder");
-                            let placeholder_size = egui::vec2(400.0, 300.0);
-                            ui.allocate_ui_with_layout(
-                                placeholder_size,
-                                egui::Layout::centered_and_justified(egui::Direction::TopDown),
-                                |ui| {
-                                    ui.label("Starting camera...");
-                                    ui.spinner();
-                                },
-                            );
+                            ui.vertical_centered(|ui| {
+                                ui.spinner();
+                                ui.label("Starting camera...");
+                            });
                         }
-                    } else if let Some(ref texture) = self.image_texture {
-                        // Show processed image
-                        let available_size = ui.available_size();
-                        let image_size = egui::Vec2::new(texture.size()[0] as f32, texture.size()[1] as f32);
-                        
-                        // Calculate display size maintaining aspect ratio
-                        let scale = (available_size.x / image_size.x).min(available_size.y / image_size.y).min(1.0);
-                        let display_size = image_size * scale;
-                        
-                        ui.add(
-                            egui::Image::from_texture(texture)
-                                .fit_to_exact_size(display_size)
-                                .rounding(egui::Rounding::same(8.0))
-                        );
                     } else {
-                        // Fallback
-                        let placeholder_size = egui::vec2(400.0, 300.0);
-                        ui.allocate_ui_with_layout(
-                            placeholder_size,
-                            egui::Layout::centered_and_justified(egui::Direction::TopDown),
-                            |ui| {
-                                ui.label("No image available");
-                                ui.label("Camera should start automatically");
-                            },
-                        );
+                        // Show processed image
+                        if let Some(ref texture) = self.image_texture {
+                            let available_size = ui.available_size();
+                            let image_size = egui::Vec2::new(texture.size()[0] as f32, texture.size()[1] as f32);
+                            
+                            // Calculate display size maintaining aspect ratio, leave some margin
+                            let margin = 40.0;
+                            let max_size = egui::vec2(available_size.x - margin, available_size.y - margin);
+                            let scale = (max_size.x / image_size.x).min(max_size.y / image_size.y).min(1.0);
+                            let display_size = image_size * scale;
+                            
+                            ui.add(
+                                egui::Image::from_texture(texture)
+                                    .fit_to_exact_size(display_size)
+                                    .rounding(egui::Rounding::same(8.0))
+                            );
+                        } else {
+                            ui.label("No processed image to display");
+                        }
                     }
                 });
-
-                ui.separator();
-
-                // Right panel - Controls
-                ui.vertical(|ui| {
-                    ui.set_width(250.0);
-                    ui.heading("Controls");
-
-                    ui.add_space(10.0);
-
-                    // Main action buttons
                     if self.preview_mode {
                         let capture_button = egui::Button::new("� Capture & Sort").min_size([200.0, 50.0].into());
                         if ui.add_enabled(!self.is_processing, capture_button).clicked() {
