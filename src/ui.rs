@@ -539,7 +539,14 @@ impl PixelSorterApp {
         }
         
         self.status_message = format!("Button {} pressed - {}", button, self.current_algorithm.name());
-    }
+    # Clean up old systemd temp files
+    sudo find /tmp -name "systemd-private-*" -type d -mtime +1 -exec rm -rf {} +
+    
+    # Clean up old namespace files  
+    sudo find /tmp -name "namespace-dev-*" -type f -mtime +1 -delete
+    
+    # Or just reboot (cleanest option)
+    sudo reboot    }
 
     fn auto_save_image(&self, image: &image::RgbImage, algorithm: &SortingAlgorithm) -> Result<(), Box<dyn std::error::Error>> {
         // Create sorted_images directory if it doesn't exist
@@ -577,7 +584,7 @@ impl PixelSorterApp {
                         if usb_path.is_dir() {
                             // Try to copy sorted_images folder to USB
                             let dest_path = usb_path.join("sorted_images");
-                            if let Ok(()) = self.copy_directory(PathBuf::from("sorted_images"), dest_path) {
+                            if let Ok(()) = self.copy_directory(PathBuf::from("sorted_images"), &dest_path) {
                                 println!("Successfully copied to USB: {}", dest_path.display());
                                 usb_found = true;
                                 break;

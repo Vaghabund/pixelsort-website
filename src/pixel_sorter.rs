@@ -218,7 +218,6 @@ impl PixelSorter {
     ) -> Result<RgbImage> {
         // Create a faster preview by processing at lower resolution
         let (_width, _height) = image.dimensions();
-        let scale_factor = 4; // Process every 4th pixel
         
         let preview_params = SortingParameters {
             threshold: params.threshold,
