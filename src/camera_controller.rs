@@ -1,103 +1,68 @@
 use anyhow::{anyhow, Result};
 use image::{RgbImage, ImageBuffer};
 use std::path::Path;
+use std::process::Command;
 use tokio::time::{Duration, sleep};
+use tokio::fs;
 
-#[cfg(feature = "camera")]
-use rascam::{SimpleCamera, CameraSettings};
-
-/// Camera controller for Raspberry Pi Camera v1.5
+/// Camera controller for Raspberry Pi Camera v1.5 using libcamera
 pub struct CameraController {
-    #[cfg(feature = "camera")]
-    camera: Option<SimpleCamera>,
-    
     /// Camera settings
     width: u32,
     height: u32,
     quality: u8,
+    /// Temporary file path for captured images
+    temp_image_path: String,
+    /// Whether libcamera-still is available
+    is_available: bool,
 }
 
 impl CameraController {
     /// Create a new camera controller
     pub fn new() -> Result<Self> {
         let mut controller = CameraController {
-            #[cfg(feature = "camera")]
-            camera: None,
             width: 1024,  // Default resolution
             height: 768,
             quality: 85,  // JPEG quality (0-100)
+            temp_image_path: "/tmp/pixelsort_camera_capture.jpg".to_string(),
+            is_available: false,
         };
 
         controller.initialize()?;
         Ok(controller)
     }
 
-    /// Initialize the camera
+    /// Initialize the camera by checking if libcamera-still is available
     pub fn initialize(&mut self) -> Result<()> {
-        #[cfg(feature = "camera")]
-        {
-            let settings = CameraSettings {
-                width: self.width,
-                height: self.height,
-                format: rascam::Format::JPEG,
-                quality: self.quality,
-                ..Default::default()
-            };
-
-            match SimpleCamera::new(settings) {
-                Ok(camera) => {
-                    self.camera = Some(camera);
-                    log::info!("Raspberry Pi Camera v1.5 initialized successfully");
-                    Ok(())
-                }
-                Err(e) => {
-                    log::error!("Failed to initialize camera: {}", e);
-                    Err(anyhow!("Camera initialization failed: {}", e))
+        // Check if libcamera-still command is available
+        match Command::new("libcamera-still").arg("--help").output() {
+            Ok(_) => {
+                self.is_available = true;
+                log::info!("Raspberry Pi Camera initialized successfully (using libcamera-still)");
+                Ok(())
+            }
+            Err(_) => {
+                // Try legacy raspistill as fallback
+                match Command::new("raspistill").arg("-?").output() {
+                    Ok(_) => {
+                        self.is_available = true;
+                        log::info!("Raspberry Pi Camera initialized successfully (using legacy raspistill)");
+                        Ok(())
+                    }
+                    Err(e) => {
+                        log::warn!("Camera initialization failed - neither libcamera-still nor raspistill found: {}", e);
+                        self.is_available = false;
+                        Ok(()) // Don't fail completely, just disable camera
+                    }
                 }
             }
-        }
-
-        #[cfg(not(feature = "camera"))]
-        {
-            log::warn!("Camera feature not enabled - camera functionality disabled");
-            Ok(())
         }
     }
 
     /// Take a photo and return it as an RgbImage
     pub async fn take_photo(&mut self) -> Result<RgbImage> {
-        #[cfg(feature = "camera")]
-        {
-            if let Some(ref mut camera) = self.camera {
-                log::info!("Taking photo with Pi Camera...");
-                
-                // Give the camera a moment to adjust exposure
-                sleep(Duration::from_millis(500)).await;
-                
-                // Capture the image
-                let jpeg_data = camera.capture().map_err(|e| {
-                    anyhow!("Failed to capture image: {}", e)
-                })?;
-                
-                log::info!("Captured {} bytes of image data", jpeg_data.len());
-                
-                // Decode the JPEG data into an image
-                let img = image::load_from_memory(&jpeg_data)
-                    .map_err(|e| anyhow!("Failed to decode image: {}", e))?;
-                
-                // Convert to RGB format
-                let rgb_img = img.to_rgb8();
-                log::info!("Photo captured successfully: {}x{}", rgb_img.width(), rgb_img.height());
-                
-                Ok(rgb_img)
-            } else {
-                Err(anyhow!("Camera not initialized"))
-            }
-        }
-
-        #[cfg(not(feature = "camera"))]
-        {
-            // Create a dummy image for development/testing
+        if !self.is_available {
+            // Create a dummy image for development/testing when camera is not available
             log::warn!("Camera not available - creating test pattern");
             let img = ImageBuffer::from_fn(self.width, self.height, |x, y| {
                 let r = (x * 255 / self.width) as u8;
@@ -105,7 +70,77 @@ impl CameraController {
                 let b = ((x + y) * 255 / (self.width + self.height)) as u8;
                 image::Rgb([r, g, b])
             });
-            Ok(img)
+            return Ok(img);
+        }
+
+        log::info!("Taking photo with Pi Camera...");
+        
+        // Remove any existing temp file
+        if Path::new(&self.temp_image_path).exists() {
+            let _ = fs::remove_file(&self.temp_image_path).await;
+        }
+
+        // Give the camera a moment to adjust exposure
+        sleep(Duration::from_millis(500)).await;
+        
+        // Try libcamera-still first (modern approach)
+        let capture_result = Command::new("libcamera-still")
+            .args(&[
+                "-o", &self.temp_image_path,
+                "--width", &self.width.to_string(),
+                "--height", &self.height.to_string(),
+                "--quality", &self.quality.to_string(),
+                "--immediate",  // Take photo immediately without preview
+                "--nopreview",  // Disable preview window
+                "--timeout", "1000"  // 1 second timeout
+            ])
+            .output();
+
+        let success = match capture_result {
+            Ok(output) => {
+                if output.status.success() {
+                    true
+                } else {
+                    log::warn!("libcamera-still failed, trying raspistill fallback");
+                    // Try legacy raspistill as fallback
+                    let legacy_result = Command::new("raspistill")
+                        .args(&[
+                            "-o", &self.temp_image_path,
+                            "-w", &self.width.to_string(),
+                            "-h", &self.height.to_string(),
+                            "-q", &self.quality.to_string(),
+                            "-t", "1000",  // 1 second timeout
+                            "-n"   // No preview
+                        ])
+                        .output();
+                    
+                    match legacy_result {
+                        Ok(output) => output.status.success(),
+                        Err(_) => false
+                    }
+                }
+            }
+            Err(_) => false
+        };
+
+        if !success {
+            return Err(anyhow!("Failed to capture image with camera"));
+        }
+
+        // Load and decode the captured image
+        match image::open(&self.temp_image_path) {
+            Ok(img) => {
+                let rgb_img = img.to_rgb8();
+                log::info!("Photo captured successfully: {}x{}", rgb_img.width(), rgb_img.height());
+                
+                // Clean up temp file
+                let _ = fs::remove_file(&self.temp_image_path).await;
+                
+                Ok(rgb_img)
+            }
+            Err(e) => {
+                Err(anyhow!("Failed to load captured image: {}", e))
+            }
         }
     }
 
@@ -138,15 +173,7 @@ impl CameraController {
 
     /// Check if camera is available and working
     pub fn is_available(&self) -> bool {
-        #[cfg(feature = "camera")]
-        {
-            self.camera.is_some()
-        }
-
-        #[cfg(not(feature = "camera"))]
-        {
-            false
-        }
+        self.is_available
     }
 
     /// Get current camera settings
@@ -157,11 +184,10 @@ impl CameraController {
 
 impl Drop for CameraController {
     fn drop(&mut self) {
-        #[cfg(feature = "camera")]
-        {
-            if let Some(_) = self.camera.take() {
-                log::info!("Camera controller dropped");
-            }
+        // Clean up any remaining temp files
+        if Path::new(&self.temp_image_path).exists() {
+            let _ = std::fs::remove_file(&self.temp_image_path);
         }
+        log::info!("Camera controller dropped");
     }
 }

@@ -20,8 +20,8 @@ egui_extras = "0.24"
 # GPIO control for Raspberry Pi
 rppal = { version = "0.14", optional = true }
 
-# Raspberry Pi Camera support
-rascam = { version = "0.0.2", optional = true }
+# Raspberry Pi Camera support (using system libcamera via process calls)
+# rascam = { version = "0.0.2", optional = true }  # Disabled - requires old MMAL libs
 
 # Async runtime and utilities
 tokio = { version = "1.0", features = ["full"] }
@@ -66,5 +66,5 @@ path = "src/main.rs"
 [features]
 default = ["gpio", "camera"]
 gpio = ["rppal"]
-camera = ["rascam"]
+camera = []  # Camera support via libcamera system calls
 dev-simulation = ["gilrs"]
