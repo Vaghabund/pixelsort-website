@@ -310,10 +310,10 @@ impl PixelSorterApp {
                         pixels,
                     };
 
-                    self.preview_texture = Some(ctx.load_texture("preview_image", color_image, egui::TextureOptions::default()));
+                    let texture = ctx.load_texture("preview_image", color_image, egui::TextureOptions::default());
+                    log::info!("✅ DEBUG: Preview texture created: {:?}", texture.size_vec2());
+                    self.preview_texture = Some(texture);
                     self.last_preview_update = std::time::Instant::now();
-                    
-                    log::debug!("✅ DEBUG: Preview texture created and updated");
                     
                     // Update status to show preview is working
                     if self.status_message.starts_with("Camera preview") || self.status_message.contains("Failed") {
@@ -399,7 +399,7 @@ impl eframe::App for PixelSorterApp {
                         ui.heading("Pixel Sorted Result");
                     }
                     
-                    // Display appropriate image based on mode
+                    // Display appropriate image based on mode                    
                     if self.is_processing {
                         let placeholder_size = egui::vec2(400.0, 300.0);
                         ui.allocate_ui_with_layout(
@@ -413,12 +413,17 @@ impl eframe::App for PixelSorterApp {
                     } else if self.preview_mode {
                         // Show live camera preview
                         if let Some(ref texture) = self.preview_texture {
+                            log::info!("✅ DEBUG: Displaying preview texture, size: {:?}", texture.size_vec2());
                             let available_size = ui.available_size();
                             let image_size = texture.size_vec2();
+                            
+                            log::info!("🔍 DEBUG: Available UI size: {:?}, Image size: {:?}", available_size, image_size);
                             
                             // Calculate display size maintaining aspect ratio
                             let scale = (available_size.x / image_size.x).min(available_size.y / image_size.y).min(1.0);
                             let display_size = image_size * scale;
+                            
+                            log::info!("🔍 DEBUG: Display size: {:?}, Scale: {}", display_size, scale);
                             
                             ui.add(
                                 egui::Image::from_texture(texture)
@@ -426,6 +431,7 @@ impl eframe::App for PixelSorterApp {
                                     .rounding(egui::Rounding::same(8.0))
                             );
                         } else {
+                            log::info!("❌ DEBUG: No preview texture available, showing placeholder");
                             let placeholder_size = egui::vec2(400.0, 300.0);
                             ui.allocate_ui_with_layout(
                                 placeholder_size,
