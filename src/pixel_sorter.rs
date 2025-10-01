@@ -222,7 +222,6 @@ impl PixelSorter {
         
         let preview_params = SortingParameters {
             threshold: params.threshold,
-            interval: params.interval * scale_factor,
         };
         
         self.sort_pixels(image, algorithm, &preview_params)

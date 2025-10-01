@@ -335,7 +335,7 @@ impl PixelSorterApp {
             
             let capture_result = tokio::task::block_in_place(|| {
                 tokio::runtime::Handle::current().block_on(async {
-                    let mut camera_lock = camera.write().await;
+                    let camera_lock = camera.write().await;
                     camera_lock.capture_snapshot()
                 })
             });
@@ -577,7 +577,7 @@ impl PixelSorterApp {
                         if usb_path.is_dir() {
                             // Try to copy sorted_images folder to USB
                             let dest_path = usb_path.join("sorted_images");
-                            if let Ok(()) = self.copy_directory("sorted_images", &dest_path) {
+                            if let Ok(()) = self.copy_directory(PathBuf::from("sorted_images"), dest_path) {
                                 println!("Successfully copied to USB: {}", dest_path.display());
                                 usb_found = true;
                                 break;
