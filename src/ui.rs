@@ -62,7 +62,7 @@ impl PixelSorterApp {
             
             tokio::spawn(async move {
                 loop {
-                    let camera_lock = camera.read().await;
+                    let mut camera_lock = camera.write().await;
                     match camera_lock.get_preview_image() {
                         Ok(_preview) => {
                             ctx_clone.request_repaint();
@@ -91,7 +91,7 @@ impl eframe::App for PixelSorterApp {
             if let Some(ref camera) = self.camera_controller {
                 let preview_result = tokio::task::block_in_place(|| {
                     tokio::runtime::Handle::current().block_on(async {
-                        let camera_lock = camera.read().await;
+                        let mut camera_lock = camera.write().await;
                         camera_lock.get_preview_image()
                     })
                 });
@@ -255,7 +255,7 @@ impl eframe::App for PixelSorterApp {
             ui.vertical_centered_justified(|ui| {
                 if self.preview_mode {
                     // Show camera preview or prompt
-                    if let Some(ref camera) = self.camera_controller {
+                    if let Some(ref _camera) = self.camera_controller {
                         if let Some(texture) = &self.current_texture {
                             let available_size = ui.available_size();
                             let texture_size = texture.size_vec2();
@@ -329,7 +329,7 @@ impl PixelSorterApp {
             
             let capture_result = tokio::task::block_in_place(|| {
                 tokio::runtime::Handle::current().block_on(async {
-                    let camera_lock = camera.read().await;
+                    let mut camera_lock = camera.write().await;
                     camera_lock.capture_snapshot()
                 })
             });
