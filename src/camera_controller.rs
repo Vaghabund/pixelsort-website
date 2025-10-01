@@ -157,7 +157,7 @@ impl CameraController {
                 "--width", &self.preview_width.to_string(),
                 "--height", &self.preview_height.to_string(),
                 "--quality", "50",  // Lower quality for speed
-                "--timeout", "100", // Slightly longer timeout for stability
+                "--timeout", "30",  // Faster timeout for higher FPS
                 "--nopreview",      // No X11 window (avoids crashes)
                 "--immediate",      // Take photo immediately
                 "--flush"           // Flush any cached frames

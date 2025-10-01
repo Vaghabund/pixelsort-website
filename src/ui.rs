@@ -78,12 +78,12 @@ impl eframe::App for PixelSorterApp {
     fn update(&mut self, ctx: &egui::Context, _frame: &mut eframe::Frame) {
         // Camera preview is now handled directly in the update loop below
 
-        // Live camera updates with all stability fixes applied
-        if self.preview_mode && self.camera_controller.is_some() {
+        // Live camera updates with all stability fixes applied - only when in preview mode and not processing
+        if self.preview_mode && self.camera_controller.is_some() && !self.is_processing {
             let now = Instant::now();
             let should_update = match self.last_camera_update {
                 None => true,
-                Some(last) => now.duration_since(last) >= std::time::Duration::from_millis(200), // 5 FPS for stability
+                Some(last) => now.duration_since(last) >= std::time::Duration::from_millis(50), // 20 FPS for smooth experience
             };
 
             if should_update {
@@ -314,6 +314,10 @@ impl PixelSorterApp {
                 Ok(captured_image) => {
                     self.original_image = Some(captured_image);
                     self.preview_mode = false; // Switch to editing mode
+                    // Clear camera texture to stop live updates during editing
+                    self.camera_texture = None;
+                    self.camera_image_data = None;
+                    self.last_camera_update = None;
                     self.apply_pixel_sort(ctx);
                 }
                 Err(e) => {
@@ -609,8 +613,10 @@ impl PixelSorterApp {
         self.processed_image = None;
         self.camera_texture = None;
         self.processed_texture = None;
+        self.camera_image_data = None;
+        self.last_camera_update = None; // Reset camera timer to immediately start fresh
         self.preview_mode = true;
-        self.status_message = "Live preview active - Press button to capture!".to_string();
+        self.status_message = "Live preview reactivated - Press button to capture!".to_string();
     }
 
     fn load_last_iteration_as_source(&mut self) -> Result<(), Box<dyn std::error::Error>> {
