@@ -83,7 +83,7 @@ impl eframe::App for PixelSorterApp {
             let now = Instant::now();
             let should_update = match self.last_camera_update {
                 None => true,
-                Some(last) => now.duration_since(last) >= std::time::Duration::from_millis(50), // 20 FPS for smooth experience
+                Some(last) => now.duration_since(last) >= std::time::Duration::from_millis(66), // 15 FPS - more realistic for Pi
             };
 
             if should_update {
@@ -91,7 +91,7 @@ impl eframe::App for PixelSorterApp {
                     let preview_result = tokio::task::block_in_place(|| {
                         tokio::runtime::Handle::current().block_on(async {
                             let mut camera_lock = camera.write().await;
-                            camera_lock.get_preview_image()
+                            camera_lock.get_fast_preview_image() // Use fast method for live preview
                         })
                     });
 
@@ -196,7 +196,7 @@ impl eframe::App for PixelSorterApp {
                                         let preview_result = tokio::task::block_in_place(|| {
                                             tokio::runtime::Handle::current().block_on(async {
                                                 let mut camera_lock = camera.write().await;
-                                                camera_lock.get_preview_image()
+                                                camera_lock.get_preview_image() // Use full quality method for manual refresh
                                             })
                                         });
 

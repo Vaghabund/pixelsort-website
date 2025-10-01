@@ -118,6 +118,41 @@ impl CameraController {
         }
     }
 
+    /// Get fast live preview image (skips corruption detection for speed)
+    pub fn get_fast_preview_image(&mut self) -> Result<RgbImage> {
+        if !self.is_available {
+            return self.get_test_pattern();
+        }
+
+        // Delete existing temp file to force fresh capture
+        if std::path::Path::new(&self.temp_preview_path).exists() {
+            let _ = std::fs::remove_file(&self.temp_preview_path);
+        }
+
+        // Fast capture with minimal settings for live preview
+        let result = Command::new("rpicam-still")
+            .args(&[
+                "-o", &self.temp_preview_path,
+                "--width", &self.preview_width.to_string(),
+                "--height", &self.preview_height.to_string(),
+                "--quality", "30",  // Lower quality for speed
+                "--timeout", "10",  // Very fast timeout
+                "--nopreview",
+                "--immediate"
+            ])
+            .output();
+
+        if result.is_err() {
+            return self.get_test_pattern();
+        }
+
+        // Load without corruption detection for speed
+        match image::open(&self.temp_preview_path) {
+            Ok(img) => Ok(img.to_rgb8()),
+            Err(_) => self.get_test_pattern()
+        }
+    }
+
     /// Get the latest preview image with timing control (non-blocking)
     pub fn get_preview_image(&mut self) -> Result<RgbImage> {
         if !self.is_available {
@@ -212,6 +247,22 @@ impl CameraController {
                 self.load_existing_preview_or_placeholder()
             }
         }
+    }
+
+    /// Get animated test pattern when camera not available
+    fn get_test_pattern(&self) -> Result<RgbImage> {
+        let time = std::time::SystemTime::now()
+            .duration_since(std::time::UNIX_EPOCH)
+            .unwrap_or_default()
+            .as_secs_f32();
+        
+        let img = ImageBuffer::from_fn(self.preview_width, self.preview_height, |x, y| {
+            let r = ((x as f32 / self.preview_width as f32 * 255.0) + (time * 50.0).sin() * 50.0) as u8;
+            let g = ((y as f32 / self.preview_height as f32 * 255.0) + (time * 30.0).cos() * 50.0) as u8;
+            let b = (((x + y) as f32 / (self.preview_width + self.preview_height) as f32 * 255.0) + (time * 70.0).sin() * 50.0) as u8;
+            image::Rgb([r.saturating_add(100), g.saturating_add(100), b.saturating_add(100)])
+        });
+        Ok(img)
     }
 
     /// Check if image is likely corrupted (solid color, etc.)
