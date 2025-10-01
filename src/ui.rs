@@ -4,9 +4,11 @@ use image;
 use rfd;
 use tokio::sync::RwLock;
 
-use crate::pixel_sorter::{PixelSorter, SortingAlgorithm, SortingParams};
+use crate::pixel_sorter::{PixelSorter, SortingAlgorithm, SortingParameters};
 use crate::camera_controller::CameraController;
 use crate::gpio_controller::GpioController;
+use crate::image_processor::ImageProcessor;
+use crate::config::Config;
 
 pub struct PixelSorterApp {
     pub original_image: Option<image::RgbImage>,
@@ -14,26 +16,31 @@ pub struct PixelSorterApp {
     pub current_texture: Option<egui::TextureHandle>,
     pub pixel_sorter: Arc<PixelSorter>,
     pub current_algorithm: SortingAlgorithm,
-    pub sorting_params: SortingParams,
+    pub sorting_params: SortingParameters,
     pub is_processing: bool,
     pub status_message: String,
     pub camera_controller: Option<Arc<RwLock<CameraController>>>,
     pub gpio_controller: Option<Arc<RwLock<GpioController>>>,
+    pub image_processor: Arc<RwLock<ImageProcessor>>,
+    pub config: Config,
     pub preview_mode: bool,
 }
 
 impl PixelSorterApp {
     pub fn new(
-        camera_controller: Option<Arc<RwLock<CameraController>>>,
+        pixel_sorter: Arc<PixelSorter>,
+        image_processor: Arc<RwLock<ImageProcessor>>,
         gpio_controller: Option<Arc<RwLock<GpioController>>>,
+        camera_controller: Option<Arc<RwLock<CameraController>>>,
+        config: Config,
     ) -> Self {
         Self {
             original_image: None,
             processed_image: None,
             current_texture: None,
-            pixel_sorter: Arc::new(PixelSorter::new()),
+            pixel_sorter,
             current_algorithm: SortingAlgorithm::Horizontal,
-            sorting_params: SortingParams::default(),
+            sorting_params: SortingParameters::default(),
             is_processing: false,
             status_message: if camera_controller.is_some() {
                 "Live preview active - Press button to capture!".to_string()
@@ -42,6 +49,8 @@ impl PixelSorterApp {
             },
             camera_controller,
             gpio_controller,
+            image_processor,
+            config,
             preview_mode: true,
         }
     }
@@ -54,7 +63,7 @@ impl PixelSorterApp {
             tokio::spawn(async move {
                 loop {
                     let camera_lock = camera.read().await;
-                    match camera_lock.get_preview_image().await {
+                    match camera_lock.get_preview_image() {
                         Ok(_preview) => {
                             ctx_clone.request_repaint();
                         }
@@ -83,7 +92,7 @@ impl eframe::App for PixelSorterApp {
                 let preview_result = tokio::task::block_in_place(|| {
                     tokio::runtime::Handle::current().block_on(async {
                         let camera_lock = camera.read().await;
-                        camera_lock.get_preview_image().await
+                        camera_lock.get_preview_image()
                     })
                 });
 
@@ -309,7 +318,9 @@ impl eframe::App for PixelSorterApp {
         // Request repaint for smooth updates
         ctx.request_repaint();
     }
+}
 
+impl PixelSorterApp {
     // New methods for the redesigned workflow
     fn capture_and_sort(&mut self, ctx: &egui::Context) {
         if let Some(ref camera) = self.camera_controller {
