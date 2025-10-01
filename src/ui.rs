@@ -69,12 +69,13 @@ impl PixelSorterApp {
                         Ok(_preview) => {
                             ctx_clone.request_repaint();
                         }
-                        Err(e) => {
-                            println!("Preview update failed: {}", e);
+                        Err(_) => {
+                            // Silently ignore preview errors to reduce logging overhead
                         }
                     }
                     drop(camera_lock);
-                    tokio::time::sleep(tokio::time::Duration::from_millis(100)).await;
+                    // Target 16 FPS: 1000ms / 16 = 62.5ms
+                    tokio::time::sleep(tokio::time::Duration::from_millis(62)).await;
                 }
             });
         }
@@ -102,8 +103,8 @@ impl eframe::App for PixelSorterApp {
                     Ok(preview_image) => {
                         self.create_texture_from_image(ctx, preview_image);
                     }
-                    Err(e) => {
-                        println!("Failed to get preview: {}", e);
+                    Err(_) => {
+                        // Silently ignore preview errors for better performance
                     }
                 }
             }
@@ -268,12 +269,6 @@ impl eframe::App for PixelSorterApp {
                             let scale = (available_size.x / texture_size.x).min(available_size.y / texture_size.y).min(1.0);
                             let display_size = texture_size * scale;
 
-                            println!("DEBUG - Texture render:");
-                            println!("  Available size: {:?}", available_size);
-                            println!("  Texture size: {:?}", texture_size);
-                            println!("  Scale: {}", scale);
-                            println!("  Display size: {:?}", display_size);
-
                             ui.add(
                                 egui::Image::new(texture)
                                     .fit_to_exact_size(display_size)
@@ -321,8 +316,10 @@ impl eframe::App for PixelSorterApp {
             }
         });
 
-        // Request repaint for smooth updates
-        ctx.request_repaint();
+        // Only request continuous repaints when in preview mode
+        if self.preview_mode && self.camera_controller.is_some() {
+            ctx.request_repaint();
+        }
     }
 }
 
@@ -377,8 +374,8 @@ impl PixelSorterApp {
                     self.create_texture_from_image(ctx, sorted_image.clone());
                     
                     // Auto-save the processed image
-                    if let Err(e) = self.auto_save_image(&sorted_image, &algorithm) {
-                        println!("Auto-save failed: {}", e);
+                    if let Err(_) = self.auto_save_image(&sorted_image, &algorithm) {
+                        // Silently handle auto-save errors to reduce logging overhead
                     }
                     
                     self.is_processing = false;
@@ -556,7 +553,7 @@ impl PixelSorterApp {
         let save_path = save_dir.join(filename);
         image.save(&save_path)?;
         
-        println!("Auto-saved image to: {}", save_path.display());
+        // Silently save without logging for better performance
         Ok(())
     }
 
