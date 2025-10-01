@@ -21,7 +21,7 @@ egui_extras = "0.24"
 rppal = { version = "0.14", optional = true }
 
 # Raspberry Pi Camera support
-rascam = { version = "0.2", optional = true }
+rascam = { version = "0.0.2", optional = true }
 
 # Async runtime and utilities
 tokio = { version = "1.0", features = ["full"] }
