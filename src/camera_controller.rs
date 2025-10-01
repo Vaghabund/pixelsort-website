@@ -145,6 +145,11 @@ impl CameraController {
         
         self.last_preview_update = now;
 
+        // Delete existing temp file to force fresh capture
+        if std::path::Path::new(&self.temp_preview_path).exists() {
+            let _ = std::fs::remove_file(&self.temp_preview_path);
+        }
+
         // Capture fresh preview using the working --nopreview approach
         let result = Command::new("rpicam-still")
             .args(&[
@@ -152,9 +157,10 @@ impl CameraController {
                 "--width", &self.preview_width.to_string(),
                 "--height", &self.preview_height.to_string(),
                 "--quality", "50",  // Lower quality for speed
-                "--timeout", "50",  // Quick capture based on our tests
+                "--timeout", "100", // Slightly longer timeout for stability
                 "--nopreview",      // No X11 window (avoids crashes)
-                "--immediate"       // Take photo immediately
+                "--immediate",      // Take photo immediately
+                "--flush"           // Flush any cached frames
             ])
             .output();
 
@@ -173,12 +179,59 @@ impl CameraController {
         match image::open(&self.temp_preview_path) {
             Ok(img) => {
                 let rgb_img = img.to_rgb8();
+                
+                // Basic validation: check if image is completely solid color (likely corrupted)
+                if self.is_likely_corrupted(&rgb_img) {
+                    // Try one more capture
+                    let _ = std::fs::remove_file(&self.temp_preview_path);
+                    let retry_result = Command::new("rpicam-still")
+                        .args(&[
+                            "-o", &self.temp_preview_path,
+                            "--width", &self.preview_width.to_string(),
+                            "--height", &self.preview_height.to_string(),
+                            "--quality", "50",
+                            "--timeout", "200", // Longer timeout for retry
+                            "--nopreview",
+                            "--immediate"
+                        ])
+                        .output();
+                        
+                    if retry_result.is_ok() {
+                        if let Ok(retry_img) = image::open(&self.temp_preview_path) {
+                            let retry_rgb = retry_img.to_rgb8();
+                            if !self.is_likely_corrupted(&retry_rgb) {
+                                return Ok(retry_rgb);
+                            }
+                        }
+                    }
+                }
+                
                 Ok(rgb_img)
             }
             Err(_) => {
                 self.load_existing_preview_or_placeholder()
             }
         }
+    }
+
+    /// Check if image is likely corrupted (solid color, etc.)
+    fn is_likely_corrupted(&self, img: &RgbImage) -> bool {
+        if img.width() < 10 || img.height() < 10 {
+            return true; // Too small
+        }
+        
+        // Sample a few pixels to check for solid color (common corruption)
+        let sample_pixels = [
+            img.get_pixel(img.width() / 4, img.height() / 4),
+            img.get_pixel(img.width() / 2, img.height() / 2),
+            img.get_pixel(3 * img.width() / 4, 3 * img.height() / 4),
+            img.get_pixel(10, 10),
+            img.get_pixel(img.width() - 10, img.height() - 10),
+        ];
+        
+        // If all sampled pixels are identical, likely corrupted
+        let first_pixel = sample_pixels[0];
+        sample_pixels.iter().all(|&pixel| pixel == first_pixel)
     }
 
     /// Load existing preview file or return placeholder

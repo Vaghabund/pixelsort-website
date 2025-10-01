@@ -326,18 +326,8 @@ impl PixelSorterApp {
                     self.processed_image = Some(sorted_image.clone());
                     self.create_processed_texture(ctx, sorted_image.clone());
                     
-                    // Auto-save the processed image
-                    match self.auto_save_image(&sorted_image, &algorithm) {
-                        Ok(_saved_path) => {
-                            // Successfully saved - ready for potential iteration
-                        }
-                        Err(_) => {
-                            // Silently handle auto-save errors to reduce logging overhead
-                        }
-                    }
-                    
                     self.is_processing = false;
-                    self.status_message = "Processing complete - Image auto-saved!".to_string();
+                    self.status_message = "Processing complete!".to_string();
                 }
                 Err(e) => {
                     self.is_processing = false;
