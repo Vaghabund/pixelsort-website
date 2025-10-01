@@ -15,7 +15,7 @@ pub struct CameraController {
     temp_image_path: String,
     /// Preview image path for live feed
     preview_image_path: String,
-    /// Whether libcamera-still is available
+    /// Whether rpicam-still is available
     is_available: bool,
     /// Preview process handle
     preview_process: Option<std::process::Child>,
@@ -38,13 +38,13 @@ impl CameraController {
         Ok(controller)
     }
 
-    /// Initialize the camera by checking if libcamera-still is available
+    /// Initialize the camera by checking if rpicam-still is available
     pub fn initialize(&mut self) -> Result<()> {
-        // Check if libcamera-still command is available
-        match Command::new("libcamera-still").arg("--help").output() {
+        // Check if rpicam-still command is available
+        match Command::new("rpicam-still").arg("--help").output() {
             Ok(_) => {
                 self.is_available = true;
-                log::info!("Raspberry Pi Camera initialized successfully (using libcamera-still)");
+                log::info!("Raspberry Pi Camera initialized successfully (using rpicam-still)");
                 Ok(())
             }
             Err(_) => {
@@ -56,7 +56,7 @@ impl CameraController {
                         Ok(())
                     }
                     Err(e) => {
-                        log::warn!("Camera initialization failed - neither libcamera-still nor raspistill found: {}", e);
+                        log::warn!("Camera initialization failed - neither rpicam-still nor raspistill found: {}", e);
                         self.is_available = false;
                         Ok(()) // Don't fail completely, just disable camera
                     }
@@ -89,8 +89,8 @@ impl CameraController {
         // Give the camera a moment to adjust exposure
         sleep(Duration::from_millis(500)).await;
         
-        // Try libcamera-still first (modern approach)
-        let capture_result = Command::new("libcamera-still")
+        // Try rpicam-still first (modern approach)
+        let capture_result = Command::new("rpicam-still")
             .args(&[
                 "-o", &self.temp_image_path,
                 "--width", &self.width.to_string(),
@@ -107,7 +107,7 @@ impl CameraController {
                 if output.status.success() {
                     true
                 } else {
-                    log::warn!("libcamera-still failed, trying raspistill fallback");
+                    log::warn!("rpicam-still failed, trying raspistill fallback");
                     // Try legacy raspistill as fallback
                     let legacy_result = Command::new("raspistill")
                         .args(&[
@@ -191,8 +191,8 @@ impl CameraController {
         // Stop any existing preview
         self.stop_preview();
 
-        // Start libcamera in continuous preview mode
-        let mut cmd = Command::new("libcamera-still");
+        // Start rpicam in continuous preview mode
+        let mut cmd = Command::new("rpicam-still");
         cmd.args(&[
             "-o", &self.preview_image_path,
             "--width", &self.width.to_string(),
@@ -274,7 +274,7 @@ impl CameraController {
         }
 
         // Take a high-quality snapshot
-        let result = Command::new("libcamera-still")
+        let result = Command::new("rpicam-still")
             .args(&[
                 "-o", temp_path,
                 "--width", &self.width.to_string(),
