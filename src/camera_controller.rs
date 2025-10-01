@@ -1,10 +1,8 @@
 use anyhow::{anyhow, Result};
 use image::{RgbImage, ImageBuffer};
 use std::path::Path;
-use std::process::{Command, Child, Stdio};
+use std::process::{Command, Child};
 use std::time::{Duration, Instant};
-use std::sync::{Arc, Mutex};
-use std::thread;
 
 /// Camera controller for Raspberry Pi Camera v1.5 using libcamera
 /// Uses a hybrid approach: background preview stream + on-demand still capture
@@ -82,131 +80,10 @@ impl CameraController {
         }
     }
 
-    /// Take a photo and return it as an RgbImage
-    pub async fn take_photo(&mut self) -> Result<RgbImage> {
-        if !self.is_available {
-            // Create a dummy image for development/testing when camera is not available
-            log::warn!("Camera not available - creating test pattern");
-            let img = ImageBuffer::from_fn(self.width, self.height, |x, y| {
-                let r = (x * 255 / self.width) as u8;
-                let g = (y * 255 / self.height) as u8;
-                let b = ((x + y) * 255 / (self.width + self.height)) as u8;
-                image::Rgb([r, g, b])
-            });
-            return Ok(img);
-        }
-
-        log::info!("Taking photo with Pi Camera...");
-        
-        // Remove any existing temp file
-        if Path::new(&self.temp_image_path).exists() {
-            let _ = fs::remove_file(&self.temp_image_path).await;
-            log::debug!("Removed existing temp file");
-        }
-
-        // Give the camera a moment to adjust exposure
-        sleep(Duration::from_millis(500)).await;
-        
-        // Try rpicam-still first (modern approach)
-        let args = [
-            "-o", &self.temp_image_path,
-            "--width", &self.width.to_string(),
-            "--height", &self.height.to_string(),
-            "--quality", &self.quality.to_string(),
-            "--immediate",  // Take photo immediately without preview
-            "--nopreview",  // Disable preview window
-            "--timeout", "1000"  // 1 second timeout
-        ];
-        
-        log::info!("Capture command: rpicam-still {}", args.join(" "));
-        
-        let capture_result = Command::new("rpicam-still")
-            .args(&args)
-            .output();
-
-        let success = match capture_result {
-            Ok(output) => {
-                if output.status.success() {
-                    log::info!("rpicam-still capture successful");
-                    true
-                } else {
-                    log::warn!("rpicam-still failed with status: {}", output.status);
-                    log::warn!("stderr: {}", String::from_utf8_lossy(&output.stderr));
-                    log::warn!("Trying raspistill fallback...");
-                    
-                    // Try legacy raspistill as fallback
-                    let legacy_result = Command::new("raspistill")
-                        .args(&[
-                            "-o", &self.temp_image_path,
-                            "-w", &self.width.to_string(),
-                            "-h", &self.height.to_string(),
-                            "-q", &self.quality.to_string(),
-                            "-t", "1000",  // 1 second timeout
-                            "-n"   // No preview
-                        ])
-                        .output();
-                    
-                    match legacy_result {
-                        Ok(output) => {
-                            if output.status.success() {
-                                log::info!("raspistill fallback successful");
-                                true
-                            } else {
-                                log::error!("raspistill also failed: {}", output.status);
-                                false
-                            }
-                        }
-                        Err(e) => {
-                            log::error!("raspistill command failed: {}", e);
-                            false
-                        }
-                    }
-                }
-            }
-            Err(e) => {
-                log::error!("rpicam-still command failed: {}", e);
-                false
-            }
-        };
-
-        if !success {
-            return Err(anyhow!("Failed to capture image with camera"));
-        }
-
-        // Load and decode the captured image
-        match image::open(&self.temp_image_path) {
-            Ok(img) => {
-                let rgb_img = img.to_rgb8();
-                log::info!("Photo captured successfully: {}x{}", rgb_img.width(), rgb_img.height());
-                
-                // Clean up temp file
-                let _ = fs::remove_file(&self.temp_image_path).await;
-                
-                Ok(rgb_img)
-            }
-            Err(e) => {
-                Err(anyhow!("Failed to load captured image: {}", e))
-            }
-        }
-    }
-
-    /// Save a photo to disk
-    pub async fn take_and_save_photo(&mut self, path: &Path) -> Result<RgbImage> {
-        let img = self.take_photo().await?;
-        
-        // Save the image
-        img.save(path).map_err(|e| {
-            anyhow!("Failed to save image to {:?}: {}", path, e)
-        })?;
-        
-        log::info!("Photo saved to {:?}", path);
-        Ok(img)
-    }
-
     /// Set camera resolution
     pub fn set_resolution(&mut self, width: u32, height: u32) -> Result<()> {
-        self.width = width;
-        self.height = height;
+        self.capture_width = width;
+        self.capture_height = height;
         
         // Reinitialize camera with new settings
         self.initialize()
@@ -390,7 +267,7 @@ impl CameraController {
 
     /// Get current camera settings
     pub fn get_settings(&self) -> (u32, u32, u8) {
-        (self.width, self.height, self.quality)
+        (self.capture_width, self.capture_height, self.quality)
     }
 }
 
@@ -400,11 +277,11 @@ impl Drop for CameraController {
         self.stop_preview();
         
         // Clean up any remaining temp files
-        if Path::new(&self.temp_image_path).exists() {
-            let _ = std::fs::remove_file(&self.temp_image_path);
+        if Path::new(&self.temp_capture_path).exists() {
+            let _ = std::fs::remove_file(&self.temp_capture_path);
         }
-        if Path::new(&self.preview_image_path).exists() {
-            let _ = std::fs::remove_file(&self.preview_image_path);
+        if Path::new(&self.temp_preview_path).exists() {
+            let _ = std::fs::remove_file(&self.temp_preview_path);
         }
         log::info!("Camera controller dropped");
     }
