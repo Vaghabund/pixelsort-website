@@ -114,161 +114,129 @@ impl eframe::App for PixelSorterApp {
             }
         }
 
-        // Main UI Layout - Side panel for controls, Central panel for image
-        egui::SidePanel::left("controls")
-            .min_width(250.0)
+        // Top panel for controls
+        egui::TopBottomPanel::top("header")
+            .min_height(80.0)
+            .resizable(false)
+            .show(ctx, |ui| {
+                ui.horizontal_centered(|ui| {
+                    ui.add_space(10.0);
+                    ui.heading("Pixel Sorter");
+                    
+                    ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
+                        // Status and iteration info
+                        if self.iteration_counter > 0 {
+                            ui.label(format!("Edit #{}", self.iteration_counter));
+                            ui.add_space(10.0);
+                        }
+                        
+                        if self.is_processing {
+                            ui.spinner();
+                            ui.add_space(10.0);
+                        }
+                        
+                        ui.label(&self.status_message);
+                    });
+                });
+            });
+
+        // Bottom panel for main controls
+        egui::TopBottomPanel::bottom("controls")
+            .min_height(120.0)
             .resizable(false)
             .show(ctx, |ui| {
                 ui.vertical_centered(|ui| {
                     ui.add_space(10.0);
-                    ui.heading("Pixel Sorter");
-                    ui.add_space(20.0);
-
-                    // Camera/Mode controls
-                    if self.preview_mode {
-                        let capture_button = egui::Button::new("Capture & Sort").min_size([200.0, 50.0].into());
-                        if ui.add_enabled(!self.is_processing, capture_button).clicked() {
-                            self.capture_and_sort(ctx);
-                        }
-                    } else {
-                        // Show iteration counter
-                        if self.iteration_counter > 0 {
-                            ui.label(format!("Edit #{}", self.iteration_counter));
-                            ui.add_space(5.0);
+                    
+                    // Main action buttons
+                    ui.horizontal_centered(|ui| {
+                        ui.add_space(20.0);
+                        
+                        if self.preview_mode {
+                            let capture_button = egui::Button::new("Capture & Sort").min_size([150.0, 50.0].into());
+                            if ui.add_enabled(!self.is_processing, capture_button).clicked() {
+                                self.capture_and_sort(ctx);
+                            }
+                        } else {
+                            if ui.add_sized([120.0, 50.0], egui::Button::new("New Photo")).clicked() {
+                                self.start_new_photo_session();
+                            }
+                            
+                            ui.add_space(10.0);
+                            
+                            if ui.add_sized([150.0, 50.0], egui::Button::new("Save & Continue")).clicked() {
+                                self.save_and_continue_iteration(ctx);
+                            }
                         }
                         
-                        if ui.add_sized([200.0, 50.0], egui::Button::new("New Photo")).clicked() {
-                            self.start_new_photo_session();
+                        ui.add_space(20.0);
+                        
+                        if ui.add_sized([120.0, 50.0], egui::Button::new("Load Image")).clicked() {
+                            self.load_image(ctx);
                         }
-                    }
-
-                    if ui.add_sized([200.0, 50.0], egui::Button::new("Load Image")).clicked() {
-                        self.load_image(ctx);
-                    }
-
-                    if ui.add_sized([200.0, 50.0], egui::Button::new("Save & Continue")).clicked() {
-                        self.save_and_continue_iteration(ctx);
-                    }
-
-                    if ui.add_sized([200.0, 50.0], egui::Button::new("Save to USB")).clicked() {
-                        match self.copy_to_usb() {
-                            Ok(()) => {
-                                self.status_message = "Successfully copied to USB!".to_string();
-                            }
-                            Err(e) => {
-                                self.status_message = format!("USB copy failed: {}", e);
+                        
+                        ui.add_space(10.0);
+                        
+                        if ui.add_sized([120.0, 50.0], egui::Button::new("Save to USB")).clicked() {
+                            match self.copy_to_usb() {
+                                Ok(()) => {
+                                    self.status_message = "Successfully copied to USB!".to_string();
+                                }
+                                Err(e) => {
+                                    self.status_message = format!("USB copy failed: {}", e);
+                                }
                             }
                         }
-                    }
-
-                    ui.add_space(10.0);
-
-                    if ui.add_sized([200.0, 50.0], egui::Button::new("Force Fullscreen")).clicked() {
-                        ctx.send_viewport_cmd(egui::ViewportCommand::Fullscreen(true));
-                        ctx.send_viewport_cmd(egui::ViewportCommand::Maximized(true));
-                    }
-
-                    if ui.add_sized([200.0, 50.0], egui::Button::new("Exit")).clicked() {
-                        std::process::exit(0);
-                    }
-
-                    ui.add_space(20.0);
-                    ui.separator();
-                    ui.add_space(10.0);
-
-                    // Algorithm selection
-                    ui.label("Sorting Algorithm:");
-                    ui.add_space(5.0);
-
-                    for &algorithm in SortingAlgorithm::all() {
-                        if ui.add_sized(
-                            [200.0, 40.0],
-                            egui::RadioButton::new(
-                                std::mem::discriminant(&self.current_algorithm) == std::mem::discriminant(&algorithm),
-                                algorithm.name(),
-                            ),
-                        ).clicked() {
-                            self.current_algorithm = algorithm;
-                            if !self.preview_mode {
-                                self.apply_pixel_sort(ctx);
-                            }
-                        }
-                    }
-
-                    ui.add_space(20.0);
-                    ui.separator();
-                    ui.add_space(10.0);
-
-                    // Parameter controls
-                    ui.label("Parameters:");
-                    ui.add_space(5.0);
-
-                    ui.label(format!("Threshold: {:.1}", self.sorting_params.threshold));
-                    let threshold_changed = ui.add(
-                        egui::Slider::new(&mut self.sorting_params.threshold, 0.0..=255.0)
-                            .step_by(1.0)
-                    ).changed();
-
-                    // Auto-process when parameters change
-                    if threshold_changed && !self.is_processing && !self.preview_mode {
-                        self.apply_pixel_sort(ctx);
-                    }
-
-                    ui.add_space(20.0);
-                    ui.separator();
-                    ui.add_space(10.0);
-
-                    // Status display
-                    ui.label("Status:");
-                    ui.label(&self.status_message);
+                    });
                     
-                    // Debug info for window size
-                    let screen_rect = ctx.screen_rect();
-                    ui.label(format!("Screen: {:.0}×{:.0}", screen_rect.width(), screen_rect.height()));
-
-                    if self.is_processing {
-                        ui.add_space(10.0);
-                        ui.spinner();
-                    }
-
-                    ui.add_space(20.0);
-
-                    // GPIO button indicators
-                    if self.gpio_controller.is_some() {
-                        ui.separator();
-                        ui.add_space(10.0);
-                        ui.label("GPIO Buttons:");
-                        ui.label("1: Load Image");
-                        if self.camera_controller.is_some() {
-                            ui.label("2: Capture & Sort");
-                            ui.label("3: Next Algorithm");
-                            ui.label("4: Threshold ↑");
-                            ui.label("5: Threshold ↓");
-                            ui.label("6: Save Image");
-                        } else {
-                            ui.label("2: Next Algorithm");
-                            ui.label("3: Threshold ↑");
-                            ui.label("4: Threshold ↓");
-                            ui.label("5: Save Image");
+                    ui.add_space(10.0);
+                    
+                    // Algorithm and parameter controls
+                    ui.horizontal_centered(|ui| {
+                        ui.add_space(20.0);
+                        
+                        // Algorithm selection
+                        ui.label("Algorithm:");
+                        for &algorithm in SortingAlgorithm::all() {
+                            if ui.add(
+                                egui::RadioButton::new(
+                                    std::mem::discriminant(&self.current_algorithm) == std::mem::discriminant(&algorithm),
+                                    algorithm.name(),
+                                ),
+                            ).clicked() {
+                                self.current_algorithm = algorithm;
+                                if !self.preview_mode {
+                                    self.apply_pixel_sort(ctx);
+                                }
+                            }
+                            ui.add_space(10.0);
                         }
-                        ui.label("ESC or Exit Button: Quit");
-                    } else {
-                        ui.separator();
-                        ui.add_space(10.0);
-                        ui.label("Keyboard Shortcuts:");
-                        if self.camera_controller.is_some() {
-                            ui.label("1-6: Button functions");
-                        } else {
-                            ui.label("1-5: Button functions");
+                        
+                        ui.add_space(20.0);
+                        
+                        // Threshold control
+                        ui.label(format!("Threshold: {:.0}", self.sorting_params.threshold));
+                        ui.add_space(5.0);
+                        let threshold_changed = ui.add(
+                            egui::Slider::new(&mut self.sorting_params.threshold, 0.0..=255.0)
+                                .step_by(1.0)
+                                .show_value(false)
+                        ).changed();
+
+                        // Auto-process when parameters change
+                        if threshold_changed && !self.is_processing && !self.preview_mode {
+                            self.apply_pixel_sort(ctx);
                         }
-                        ui.label("ESC or Exit Button: Quit");
-                    }
+                    });
+                    
+                    ui.add_space(10.0);
                 });
             });
 
-        // Central panel for image display
+        // Central panel for image display - camera feed or processed image
         egui::CentralPanel::default().show(ctx, |ui| {
-            ui.vertical_centered_justified(|ui| {
+            // Center the image in the available space
+            ui.centered_and_justified(|ui| {
                 if self.preview_mode {
                     // Show camera preview or prompt
                     if let Some(ref _camera) = self.camera_controller {
@@ -281,6 +249,7 @@ impl eframe::App for PixelSorterApp {
                             ui.add(
                                 egui::Image::new(texture)
                                     .fit_to_exact_size(display_size)
+                                    .rounding(egui::Rounding::same(8.0))
                             );
                         } else {
                             ui.label("Initializing camera...");
@@ -299,6 +268,7 @@ impl eframe::App for PixelSorterApp {
                         ui.add(
                             egui::Image::new(texture)
                                 .fit_to_exact_size(display_size)
+                                .rounding(egui::Rounding::same(8.0))
                         );
                     } else {
                         ui.label("No processed image to display");
