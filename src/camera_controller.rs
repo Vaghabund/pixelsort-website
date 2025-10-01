@@ -40,14 +40,18 @@ impl CameraController {
 
     /// Initialize the camera by checking if rpicam-still is available
     pub fn initialize(&mut self) -> Result<()> {
+        log::info!("Initializing camera controller...");
+        
         // Check if rpicam-still command is available
         match Command::new("rpicam-still").arg("--help").output() {
-            Ok(_) => {
+            Ok(output) => {
                 self.is_available = true;
                 log::info!("Raspberry Pi Camera initialized successfully (using rpicam-still)");
+                log::debug!("rpicam-still help output: {}", String::from_utf8_lossy(&output.stdout));
                 Ok(())
             }
-            Err(_) => {
+            Err(e) => {
+                log::warn!("rpicam-still not found: {}", e);
                 // Try legacy raspistill as fallback
                 match Command::new("raspistill").arg("-?").output() {
                     Ok(_) => {
@@ -56,7 +60,7 @@ impl CameraController {
                         Ok(())
                     }
                     Err(e) => {
-                        log::warn!("Camera initialization failed - neither rpicam-still nor raspistill found: {}", e);
+                        log::error!("Camera initialization failed - neither rpicam-still nor raspistill found: {}", e);
                         self.is_available = false;
                         Ok(()) // Don't fail completely, just disable camera
                     }
@@ -84,30 +88,39 @@ impl CameraController {
         // Remove any existing temp file
         if Path::new(&self.temp_image_path).exists() {
             let _ = fs::remove_file(&self.temp_image_path).await;
+            log::debug!("Removed existing temp file");
         }
 
         // Give the camera a moment to adjust exposure
         sleep(Duration::from_millis(500)).await;
         
         // Try rpicam-still first (modern approach)
+        let args = [
+            "-o", &self.temp_image_path,
+            "--width", &self.width.to_string(),
+            "--height", &self.height.to_string(),
+            "--quality", &self.quality.to_string(),
+            "--immediate",  // Take photo immediately without preview
+            "--nopreview",  // Disable preview window
+            "--timeout", "1000"  // 1 second timeout
+        ];
+        
+        log::info!("Capture command: rpicam-still {}", args.join(" "));
+        
         let capture_result = Command::new("rpicam-still")
-            .args(&[
-                "-o", &self.temp_image_path,
-                "--width", &self.width.to_string(),
-                "--height", &self.height.to_string(),
-                "--quality", &self.quality.to_string(),
-                "--immediate",  // Take photo immediately without preview
-                "--nopreview",  // Disable preview window
-                "--timeout", "1000"  // 1 second timeout
-            ])
+            .args(&args)
             .output();
 
         let success = match capture_result {
             Ok(output) => {
                 if output.status.success() {
+                    log::info!("rpicam-still capture successful");
                     true
                 } else {
-                    log::warn!("rpicam-still failed, trying raspistill fallback");
+                    log::warn!("rpicam-still failed with status: {}", output.status);
+                    log::warn!("stderr: {}", String::from_utf8_lossy(&output.stderr));
+                    log::warn!("Trying raspistill fallback...");
+                    
                     // Try legacy raspistill as fallback
                     let legacy_result = Command::new("raspistill")
                         .args(&[
@@ -121,12 +134,26 @@ impl CameraController {
                         .output();
                     
                     match legacy_result {
-                        Ok(output) => output.status.success(),
-                        Err(_) => false
+                        Ok(output) => {
+                            if output.status.success() {
+                                log::info!("raspistill fallback successful");
+                                true
+                            } else {
+                                log::error!("raspistill also failed: {}", output.status);
+                                false
+                            }
+                        }
+                        Err(e) => {
+                            log::error!("raspistill command failed: {}", e);
+                            false
+                        }
                     }
                 }
             }
-            Err(_) => false
+            Err(e) => {
+                log::error!("rpicam-still command failed: {}", e);
+                false
+            }
         };
 
         if !success {
@@ -184,7 +211,10 @@ impl CameraController {
 
     /// Start live preview (continuous capture for preview)
     pub fn start_preview(&mut self) -> Result<()> {
+        log::info!("Starting camera preview...");
+        
         if !self.is_available {
+            log::error!("Cannot start preview: Camera not available");
             return Err(anyhow!("Camera not available"));
         }
 
@@ -193,21 +223,24 @@ impl CameraController {
 
         // Start rpicam in continuous preview mode
         let mut cmd = Command::new("rpicam-still");
-        cmd.args(&[
+        let args = [
             "-o", &self.preview_image_path,
-            "--width", &self.width.to_string(),
-            "--height", &self.height.to_string(),
+            "--width", "800",  // Use smaller resolution for preview
+            "--height", "600",
             "--quality", "70",  // Lower quality for faster preview
             "--timeout", "0",   // Continuous mode
             "--nopreview",      // No system preview window
             "--signal",         // Enable signal capture for updates
             "--loop"            // Continuous capture
-        ]);
+        ];
+        
+        log::info!("Preview command: rpicam-still {}", args.join(" "));
+        cmd.args(&args);
 
         match cmd.spawn() {
             Ok(child) => {
                 self.preview_process = Some(child);
-                log::info!("Camera preview started");
+                log::info!("Camera preview started successfully");
                 Ok(())
             }
             Err(e) => {
@@ -229,25 +262,33 @@ impl CameraController {
     /// Get the latest preview image (non-blocking)
     pub fn get_preview_image(&self) -> Result<RgbImage> {
         if !self.is_available {
+            log::debug!("Camera not available, returning test pattern");
             // Return test pattern if camera not available
-            let img = ImageBuffer::from_fn(self.width, self.height, |x, y| {
+            let img = ImageBuffer::from_fn(800, 600, |x, y| {
                 let time = std::time::SystemTime::now()
                     .duration_since(std::time::UNIX_EPOCH)
                     .unwrap_or_default()
                     .as_secs_f32();
                 
-                let r = ((x as f32 / self.width as f32 * 255.0) + (time * 50.0).sin() * 50.0) as u8;
-                let g = ((y as f32 / self.height as f32 * 255.0) + (time * 30.0).cos() * 50.0) as u8;
-                let b = (((x + y) as f32 / (self.width + self.height) as f32 * 255.0) + (time * 70.0).sin() * 50.0) as u8;
+                let r = ((x as f32 / 800.0 * 255.0) + (time * 50.0).sin() * 50.0) as u8;
+                let g = ((y as f32 / 600.0 * 255.0) + (time * 30.0).cos() * 50.0) as u8;
+                let b = (((x + y) as f32 / 1400.0 * 255.0) + (time * 70.0).sin() * 50.0) as u8;
                 image::Rgb([r.saturating_add(100), g.saturating_add(100), b.saturating_add(100)])
             });
             return Ok(img);
+        }
+
+        // Check if preview file exists and get its metadata
+        if !std::path::Path::new(&self.preview_image_path).exists() {
+            log::warn!("Preview image file doesn't exist: {}", self.preview_image_path);
+            return Err(anyhow!("Preview image file not found"));
         }
 
         // Try to load the preview image
         match image::open(&self.preview_image_path) {
             Ok(img) => {
                 let rgb_img = img.to_rgb8();
+                log::debug!("Successfully loaded preview image: {}x{}", rgb_img.width(), rgb_img.height());
                 Ok(rgb_img)
             }
             Err(_) => {

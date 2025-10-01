@@ -33,6 +33,7 @@ pub struct PixelSorterApp {
     status_message: String,
     show_file_dialog: bool,
     preview_mode: bool,  // Whether showing live preview or processed image
+    preview_started: bool,  // Whether camera preview has been started
 }
 
 impl PixelSorterApp {
@@ -66,6 +67,7 @@ impl PixelSorterApp {
             status_message: status_msg.to_string(),
             show_file_dialog: false,
             preview_mode: true,  // Start in preview mode
+            preview_started: false,  // Preview not yet started
         };
 
         // Note: Camera preview will be started in the first update loop
@@ -245,6 +247,29 @@ impl PixelSorterApp {
         self.image_texture = Some(ctx.load_texture("processed_image", color_image, egui::TextureOptions::default()));
     }
 
+    fn start_camera_preview(&mut self) {
+        if let Some(ref camera) = self.camera_controller {
+            let start_result = tokio::task::block_in_place(|| {
+                tokio::runtime::Handle::current().block_on(async {
+                    let mut camera_lock = camera.write().await;
+                    camera_lock.start_preview()
+                })
+            });
+
+            match start_result {
+                Ok(_) => {
+                    self.preview_started = true;
+                    self.status_message = "Camera preview started - Press button to capture!".to_string();
+                }
+                Err(e) => {
+                    self.status_message = format!("Failed to start camera preview: {}", e);
+                }
+            }
+        } else {
+            self.status_message = "No camera available".to_string();
+        }
+    }
+
     fn update_preview(&mut self, ctx: &egui::Context) {
         if let Some(ref camera) = self.camera_controller {
             // Get latest preview image
@@ -322,6 +347,11 @@ impl eframe::App for PixelSorterApp {
     fn update(&mut self, ctx: &egui::Context, frame: &mut eframe::Frame) {
         // Handle GPIO input
         self.handle_gpio_input(ctx);
+
+        // Start camera preview on first update
+        if self.preview_mode && !self.preview_started {
+            self.start_camera_preview();
+        }
 
         // Update live preview if in preview mode
         if self.preview_mode {
