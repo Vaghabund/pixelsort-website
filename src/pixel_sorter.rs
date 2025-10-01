@@ -1,3 +1,4 @@
+#![allow(dead_code)]
 use anyhow::Result;
 use image::{Rgb, RgbImage};
 use std::cmp::Ordering;

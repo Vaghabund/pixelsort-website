@@ -12,10 +12,10 @@ use crate::camera_controller::CameraController;
 
 pub struct PixelSorterApp {
     pixel_sorter: Arc<PixelSorter>,
-    image_processor: Arc<RwLock<ImageProcessor>>,
+    _image_processor: Arc<RwLock<ImageProcessor>>,
     gpio_controller: Option<Arc<RwLock<GpioController>>>,
     camera_controller: Option<Arc<RwLock<CameraController>>>,
-    config: Config,
+    _config: Config,
     
     // UI State
     current_algorithm: SortingAlgorithm,
@@ -31,7 +31,7 @@ pub struct PixelSorterApp {
     // UI flags
     is_processing: bool,
     status_message: String,
-    show_file_dialog: bool,
+    _show_file_dialog: bool,
     preview_mode: bool,  // Whether showing live preview or processed image
     preview_started: bool,  // Whether camera preview has been started
     last_preview_update: std::time::Instant,  // Timer for preview updates
@@ -53,10 +53,10 @@ impl PixelSorterApp {
 
         let app = Self {
             pixel_sorter,
-            image_processor,
+            _image_processor: image_processor,
             gpio_controller,
             camera_controller,
-            config,
+            _config: config,
             current_algorithm: SortingAlgorithm::Horizontal,
             sorting_params: SortingParameters::default(),
             original_image: None,
@@ -66,7 +66,7 @@ impl PixelSorterApp {
             preview_texture: None,
             is_processing: false,
             status_message: status_msg.to_string(),
-            show_file_dialog: false,
+            _show_file_dialog: false,
             preview_mode: true,  // Start in preview mode
             preview_started: false,  // Preview not yet started
             last_preview_update: std::time::Instant::now(),
@@ -149,6 +149,7 @@ impl PixelSorterApp {
         }
     }
 
+    #[allow(dead_code)]
     fn take_photo_blocking(&self) -> Result<image::RgbImage, anyhow::Error> {
         use std::process::Command;
         use anyhow::anyhow;
@@ -359,7 +360,7 @@ impl PixelSorterApp {
 }
 
 impl eframe::App for PixelSorterApp {
-    fn update(&mut self, ctx: &egui::Context, frame: &mut eframe::Frame) {
+    fn update(&mut self, ctx: &egui::Context, _frame: &mut eframe::Frame) {
         // Handle GPIO input
         self.handle_gpio_input(ctx);
 

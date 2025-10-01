@@ -1,3 +1,4 @@
+#![allow(dead_code)]
 use anyhow::{Context, Result};
 use rppal::gpio::{Gpio, InputPin, Level, Trigger};
 use std::collections::HashMap;

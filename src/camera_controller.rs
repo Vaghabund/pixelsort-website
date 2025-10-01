@@ -1,3 +1,4 @@
+#![allow(dead_code)]
 use anyhow::{anyhow, Result};
 use image::{RgbImage, ImageBuffer};
 use std::path::Path;
