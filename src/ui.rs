@@ -1,8 +1,10 @@
 use std::sync::Arc;
+use std::path::PathBuf;
 use eframe::egui;
 use image;
 use rfd;
 use tokio::sync::RwLock;
+use chrono::{DateTime, Local};
 
 use crate::pixel_sorter::{PixelSorter, SortingAlgorithm, SortingParameters};
 use crate::camera_controller::CameraController;
@@ -138,6 +140,17 @@ impl eframe::App for PixelSorterApp {
                         self.save_image();
                     }
 
+                    if ui.add_sized([200.0, 50.0], egui::Button::new("📀 Save to USB")).clicked() {
+                        match self.copy_to_usb() {
+                            Ok(()) => {
+                                self.status_message = "Successfully copied to USB!".to_string();
+                            }
+                            Err(e) => {
+                                self.status_message = format!("USB copy failed: {}", e);
+                            }
+                        }
+                    }
+
                     ui.add_space(10.0);
 
                     if ui.add_sized([200.0, 50.0], egui::Button::new("⛶ Force Fullscreen")).clicked() {
@@ -186,15 +199,8 @@ impl eframe::App for PixelSorterApp {
                             .step_by(1.0)
                     ).changed();
 
-                    ui.add_space(10.0);
-
-                    ui.label(format!("Interval: {}", self.sorting_params.interval));
-                    let interval_changed = ui.add(
-                        egui::Slider::new(&mut self.sorting_params.interval, 1..=50)
-                    ).changed();
-
                     // Auto-process when parameters change
-                    if (threshold_changed || interval_changed) && !self.is_processing && !self.preview_mode {
+                    if threshold_changed && !self.is_processing && !self.preview_mode {
                         self.apply_pixel_sort(ctx);
                     }
 
@@ -368,9 +374,15 @@ impl PixelSorterApp {
             match pixel_sorter.sort_pixels(&image, algorithm, &params) {
                 Ok(sorted_image) => {
                     self.processed_image = Some(sorted_image.clone());
-                    self.create_texture_from_image(ctx, sorted_image);
+                    self.create_texture_from_image(ctx, sorted_image.clone());
+                    
+                    // Auto-save the processed image
+                    if let Err(e) = self.auto_save_image(&sorted_image, &algorithm) {
+                        println!("Auto-save failed: {}", e);
+                    }
+                    
                     self.is_processing = false;
-                    self.status_message = "Processing complete!".to_string();
+                    self.status_message = "Processing complete - Image auto-saved!".to_string();
                 }
                 Err(e) => {
                     self.is_processing = false;
@@ -527,5 +539,83 @@ impl PixelSorterApp {
         }
         
         self.status_message = format!("Button {} pressed - {}", button, self.current_algorithm.name());
+    }
+
+    fn auto_save_image(&self, image: &image::RgbImage, algorithm: &SortingAlgorithm) -> Result<(), Box<dyn std::error::Error>> {
+        // Create sorted_images directory if it doesn't exist
+        let save_dir = PathBuf::from("sorted_images");
+        std::fs::create_dir_all(&save_dir)?;
+        
+        // Generate timestamp-based filename
+        let now: DateTime<Local> = Local::now();
+        let filename = format!("pixelsort_{}_{}.png", 
+            algorithm.name().to_lowercase(),
+            now.format("%Y%m%d_%H%M%S")
+        );
+        
+        let save_path = save_dir.join(filename);
+        image.save(&save_path)?;
+        
+        println!("Auto-saved image to: {}", save_path.display());
+        Ok(())
+    }
+
+    fn copy_to_usb(&self) -> Result<(), Box<dyn std::error::Error>> {
+        // Find USB drives (looking for common mount points on Linux/Pi)
+        let usb_paths = [
+            "/media/pi", // Pi OS default
+            "/media", // Generic Linux
+            "/mnt", // Manual mounts
+        ];
+
+        let mut usb_found = false;
+        for base_path in &usb_paths {
+            if let Ok(entries) = std::fs::read_dir(base_path) {
+                for entry in entries {
+                    if let Ok(entry) = entry {
+                        let usb_path = entry.path();
+                        if usb_path.is_dir() {
+                            // Try to copy sorted_images folder to USB
+                            let dest_path = usb_path.join("sorted_images");
+                            if let Ok(()) = self.copy_directory("sorted_images", &dest_path) {
+                                println!("Successfully copied to USB: {}", dest_path.display());
+                                usb_found = true;
+                                break;
+                            }
+                        }
+                    }
+                }
+                if usb_found { break; }
+            }
+        }
+
+        if !usb_found {
+            return Err("No USB drive found or copy failed".into());
+        }
+        
+        Ok(())
+    }
+
+    fn copy_directory<P: AsRef<std::path::Path>>(&self, src: P, dst: P) -> Result<(), Box<dyn std::error::Error>> {
+        let src = src.as_ref();
+        let dst = dst.as_ref();
+        
+        if !src.exists() {
+            return Err("Source directory does not exist".into());
+        }
+
+        std::fs::create_dir_all(dst)?;
+
+        for entry in std::fs::read_dir(src)? {
+            let entry = entry?;
+            let src_path = entry.path();
+            let dst_path = dst.join(entry.file_name());
+
+            if src_path.is_file() {
+                std::fs::copy(&src_path, &dst_path)?;
+            }
+        }
+
+        Ok(())
     }
 }
