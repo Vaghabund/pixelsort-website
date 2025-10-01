@@ -13,19 +13,25 @@ pub struct CameraController {
     quality: u8,
     /// Temporary file path for captured images
     temp_image_path: String,
+    /// Preview image path for live feed
+    preview_image_path: String,
     /// Whether libcamera-still is available
     is_available: bool,
+    /// Preview process handle
+    preview_process: Option<std::process::Child>,
 }
 
 impl CameraController {
     /// Create a new camera controller
     pub fn new() -> Result<Self> {
         let mut controller = CameraController {
-            width: 1024,  // Default resolution
-            height: 768,
+            width: 800,  // Good size for preview
+            height: 600,
             quality: 85,  // JPEG quality (0-100)
             temp_image_path: "/tmp/pixelsort_camera_capture.jpg".to_string(),
+            preview_image_path: "/tmp/pixelsort_camera_preview.jpg".to_string(),
             is_available: false,
+            preview_process: None,
         };
 
         controller.initialize()?;
@@ -176,6 +182,133 @@ impl CameraController {
         self.is_available
     }
 
+    /// Start live preview (continuous capture for preview)
+    pub fn start_preview(&mut self) -> Result<()> {
+        if !self.is_available {
+            return Err(anyhow!("Camera not available"));
+        }
+
+        // Stop any existing preview
+        self.stop_preview();
+
+        // Start libcamera in continuous preview mode
+        let mut cmd = Command::new("libcamera-still");
+        cmd.args(&[
+            "-o", &self.preview_image_path,
+            "--width", &self.width.to_string(),
+            "--height", &self.height.to_string(),
+            "--quality", "70",  // Lower quality for faster preview
+            "--timeout", "0",   // Continuous mode
+            "--nopreview",      // No system preview window
+            "--signal",         // Enable signal capture for updates
+            "--loop"            // Continuous capture
+        ]);
+
+        match cmd.spawn() {
+            Ok(child) => {
+                self.preview_process = Some(child);
+                log::info!("Camera preview started");
+                Ok(())
+            }
+            Err(e) => {
+                log::error!("Failed to start camera preview: {}", e);
+                Err(anyhow!("Failed to start preview: {}", e))
+            }
+        }
+    }
+
+    /// Stop live preview
+    pub fn stop_preview(&mut self) {
+        if let Some(mut process) = self.preview_process.take() {
+            let _ = process.kill();
+            let _ = process.wait();
+            log::info!("Camera preview stopped");
+        }
+    }
+
+    /// Get the latest preview image (non-blocking)
+    pub fn get_preview_image(&self) -> Result<RgbImage> {
+        if !self.is_available {
+            // Return test pattern if camera not available
+            let img = ImageBuffer::from_fn(self.width, self.height, |x, y| {
+                let time = std::time::SystemTime::now()
+                    .duration_since(std::time::UNIX_EPOCH)
+                    .unwrap_or_default()
+                    .as_secs_f32();
+                
+                let r = ((x as f32 / self.width as f32 * 255.0) + (time * 50.0).sin() * 50.0) as u8;
+                let g = ((y as f32 / self.height as f32 * 255.0) + (time * 30.0).cos() * 50.0) as u8;
+                let b = (((x + y) as f32 / (self.width + self.height) as f32 * 255.0) + (time * 70.0).sin() * 50.0) as u8;
+                image::Rgb([r.saturating_add(100), g.saturating_add(100), b.saturating_add(100)])
+            });
+            return Ok(img);
+        }
+
+        // Try to load the preview image
+        match image::open(&self.preview_image_path) {
+            Ok(img) => {
+                let rgb_img = img.to_rgb8();
+                Ok(rgb_img)
+            }
+            Err(_) => {
+                // If preview image doesn't exist yet, create a loading placeholder
+                let img = ImageBuffer::from_fn(self.width, self.height, |x, y| {
+                    if (x + y) % 50 < 25 {
+                        image::Rgb([50, 50, 50])
+                    } else {
+                        image::Rgb([100, 100, 100])
+                    }
+                });
+                Ok(img)
+            }
+        }
+    }
+
+    /// Take a quick snapshot (for pixel sorting) 
+    pub fn capture_snapshot(&self) -> Result<RgbImage> {
+        let temp_path = "/tmp/pixelsort_snapshot.jpg";
+        
+        // Remove any existing temp file
+        if Path::new(temp_path).exists() {
+            let _ = std::fs::remove_file(temp_path);
+        }
+
+        // Take a high-quality snapshot
+        let result = Command::new("libcamera-still")
+            .args(&[
+                "-o", temp_path,
+                "--width", &self.width.to_string(),
+                "--height", &self.height.to_string(),
+                "--quality", &self.quality.to_string(),
+                "--immediate",
+                "--nopreview",
+                "--timeout", "100"  // Very quick capture
+            ])
+            .output();
+
+        let success = match result {
+            Ok(output) => output.status.success(),
+            Err(_) => false
+        };
+
+        if !success {
+            return Err(anyhow!("Failed to capture snapshot"));
+        }
+
+        // Load the image
+        match image::open(temp_path) {
+            Ok(img) => {
+                let rgb_img = img.to_rgb8();
+                // Clean up
+                let _ = std::fs::remove_file(temp_path);
+                Ok(rgb_img)
+            }
+            Err(e) => {
+                Err(anyhow!("Failed to load snapshot: {}", e))
+            }
+        }
+    }
+
     /// Get current camera settings
     pub fn get_settings(&self) -> (u32, u32, u8) {
         (self.width, self.height, self.quality)
@@ -184,9 +317,15 @@ impl CameraController {
 
 impl Drop for CameraController {
     fn drop(&mut self) {
+        // Stop preview process
+        self.stop_preview();
+        
         // Clean up any remaining temp files
         if Path::new(&self.temp_image_path).exists() {
             let _ = std::fs::remove_file(&self.temp_image_path);
+        }
+        if Path::new(&self.preview_image_path).exists() {
+            let _ = std::fs::remove_file(&self.preview_image_path);
         }
         log::info!("Camera controller dropped");
     }
