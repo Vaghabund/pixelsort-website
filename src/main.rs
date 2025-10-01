@@ -25,8 +25,7 @@ async fn main() -> Result<()> {
         .filter_level(log::LevelFilter::Debug)
         .init();
     
-    info!("🎨 Starting Raspberry Pi Pixel Sorter (Rust Edition)");
-    println!("🔍 DEBUG logging enabled - you should see detailed camera debug messages");
+    info!("Starting Raspberry Pi Pixel Sorter (Rust Edition)");
 
     // Load configuration
     let config = Config::load()?;
@@ -49,15 +48,12 @@ async fn main() -> Result<()> {
     };
 
     // Initialize Camera controller  
-    info!("🔍 DEBUG: Attempting to initialize camera controller...");
     let camera_controller = match CameraController::new() {
         Ok(controller) => {
-            info!("✅ DEBUG: Camera controller initialized successfully");
-            info!("🔍 DEBUG: Camera available: {}", controller.is_available());
             Some(Arc::new(RwLock::new(controller)))
         }
         Err(e) => {
-            log::error!("❌ DEBUG: Camera initialization failed: {}. Camera features disabled.", e);
+            log::error!("Camera initialization failed: {}. Camera features disabled.", e);
             None
         }
     };
