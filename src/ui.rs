@@ -22,8 +22,11 @@ pub struct PixelSorterApp {
     pub is_processing: bool,
     pub status_message: String,
     pub camera_controller: Option<Arc<RwLock<CameraController>>>,
+    #[allow(dead_code)]
     pub gpio_controller: Option<Arc<RwLock<GpioController>>>,
+    #[allow(dead_code)]
     pub image_processor: Arc<RwLock<ImageProcessor>>,
+    #[allow(dead_code)]
     pub config: Config,
     pub preview_mode: bool,
     pub iteration_counter: u32,
@@ -328,12 +331,6 @@ impl PixelSorterApp {
                 }
             }
         }
-    }
-
-    fn save_and_return_to_camera(&mut self) {
-        // TODO: Implement actual save functionality
-        self.preview_mode = true;
-        self.status_message = "Returned to camera preview".to_string();
     }
 
     fn apply_pixel_sort(&mut self, ctx: &egui::Context) {
