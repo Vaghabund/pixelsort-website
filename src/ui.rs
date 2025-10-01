@@ -16,7 +16,8 @@ use crate::config::Config;
 pub struct PixelSorterApp {
     pub original_image: Option<image::RgbImage>,
     pub processed_image: Option<image::RgbImage>,
-    pub current_texture: Option<egui::TextureHandle>,
+    pub camera_texture: Option<egui::TextureHandle>,
+    pub processed_texture: Option<egui::TextureHandle>,
     pub pixel_sorter: Arc<PixelSorter>,
     pub current_algorithm: SortingAlgorithm,
     pub sorting_params: SortingParameters,
@@ -46,7 +47,8 @@ impl PixelSorterApp {
         Self {
             original_image: None,
             processed_image: None,
-            current_texture: None,
+            camera_texture: None,
+            processed_texture: None,
             pixel_sorter,
             current_algorithm: SortingAlgorithm::Horizontal,
             sorting_params: SortingParameters::default(),
@@ -93,7 +95,7 @@ impl eframe::App for PixelSorterApp {
 
                     match preview_result {
                         Ok(preview_image) => {
-                            self.create_texture_from_image(ctx, preview_image);
+                            self.create_camera_texture(ctx, preview_image);
                             self.last_camera_update = Some(now);
                         }
                         Err(_) => {
@@ -231,7 +233,7 @@ impl eframe::App for PixelSorterApp {
             if self.preview_mode {
                 // Show camera preview or prompt
                 if let Some(ref _camera) = self.camera_controller {
-                    if let Some(texture) = &self.current_texture {
+                    if let Some(texture) = &self.camera_texture {
                         let texture_size = texture.size_vec2();
                         
                         // Calculate scale to fit within available space with some margin
@@ -271,7 +273,7 @@ impl eframe::App for PixelSorterApp {
                 }
             } else {
                 // Show processed image
-                if let Some(texture) = &self.current_texture {
+                if let Some(texture) = &self.processed_texture {
                     let texture_size = texture.size_vec2();
                     
                     // Calculate scale to fit within available space with some margin
@@ -374,7 +376,7 @@ impl PixelSorterApp {
             match pixel_sorter.sort_pixels(&image, algorithm, &params) {
                 Ok(sorted_image) => {
                     self.processed_image = Some(sorted_image.clone());
-                    self.create_texture_from_image(ctx, sorted_image.clone());
+                    self.create_processed_texture(ctx, sorted_image.clone());
                     
                     // Auto-save the processed image
                     match self.auto_save_image(&sorted_image, &algorithm) {
@@ -412,7 +414,7 @@ impl PixelSorterApp {
             match pixel_sorter.sort_pixels(&image, algorithm, &params) {
                 Ok(sorted_image) => {
                     self.processed_image = Some(sorted_image.clone());
-                    self.create_texture_from_image(ctx, sorted_image);
+                    self.create_processed_texture(ctx, sorted_image);
                     self.is_processing = false;
                     self.status_message = "Processing complete!".to_string();
                 }
@@ -465,21 +467,26 @@ impl PixelSorterApp {
         }
     }
 
-    fn create_texture_from_image(&mut self, ctx: &egui::Context, image: image::RgbImage) {
+    fn create_camera_texture(&mut self, ctx: &egui::Context, image: image::RgbImage) {
         let size = [image.width() as usize, image.height() as usize];
         let pixels = image.as_flat_samples();
         
         let color_image = egui::ColorImage::from_rgb(size, pixels.as_slice());
-        
-        // Use unique texture name with timestamp to avoid conflicts
-        let texture_name = if self.preview_mode {
-            format!("camera_preview_{}", std::time::SystemTime::now().duration_since(std::time::UNIX_EPOCH).unwrap_or_default().as_millis())
-        } else {
-            format!("processed_image_{}", std::time::SystemTime::now().duration_since(std::time::UNIX_EPOCH).unwrap_or_default().as_millis())
-        };
+        let texture_name = format!("camera_preview_{}", std::time::SystemTime::now().duration_since(std::time::UNIX_EPOCH).unwrap_or_default().as_millis());
         
         let texture = ctx.load_texture(texture_name, color_image, egui::TextureOptions::LINEAR);
-        self.current_texture = Some(texture);
+        self.camera_texture = Some(texture);
+    }
+
+    fn create_processed_texture(&mut self, ctx: &egui::Context, image: image::RgbImage) {
+        let size = [image.width() as usize, image.height() as usize];
+        let pixels = image.as_flat_samples();
+        
+        let color_image = egui::ColorImage::from_rgb(size, pixels.as_slice());
+        let texture_name = format!("processed_image_{}", std::time::SystemTime::now().duration_since(std::time::UNIX_EPOCH).unwrap_or_default().as_millis());
+        
+        let texture = ctx.load_texture(texture_name, color_image, egui::TextureOptions::LINEAR);
+        self.processed_texture = Some(texture);
     }
 
     fn on_button_press(&mut self, button: u8, ctx: &egui::Context) {
@@ -648,7 +655,8 @@ impl PixelSorterApp {
         self.current_session_folder = None;
         self.original_image = None;
         self.processed_image = None;
-        self.current_texture = None;
+        self.camera_texture = None;
+        self.processed_texture = None;
         self.preview_mode = true;
         self.status_message = "Live preview active - Press button to capture!".to_string();
     }
