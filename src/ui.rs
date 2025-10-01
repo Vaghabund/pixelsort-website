@@ -109,15 +109,8 @@ impl PixelSorterApp {
             self.is_processing = true;
             self.status_message = "Taking photo...".to_string();
             
-            // For now, create a blocking runtime to handle the async operation
-            // In a real app, you'd want to use proper async state management
-            let camera_clone = camera.clone();
-            let rt = tokio::runtime::Runtime::new().unwrap();
-            
-            match rt.block_on(async {
-                let mut camera_lock = camera_clone.write().await;
-                camera_lock.take_photo().await
-            }) {
+            // Use a simple blocking approach that works with egui
+            match self.take_photo_blocking() {
                 Ok(rgb_img) => {
                     self.original_image = Some(rgb_img);
                     self.status_message = "Photo captured successfully!".to_string();
@@ -130,6 +123,67 @@ impl PixelSorterApp {
             }
         } else {
             self.status_message = "Camera not available".to_string();
+        }
+    }
+
+    fn take_photo_blocking(&self) -> Result<image::RgbImage, anyhow::Error> {
+        use std::process::Command;
+        use anyhow::anyhow;
+        
+        let temp_path = "/tmp/pixelsort_capture.jpg";
+        
+        // Remove any existing temp file
+        if std::path::Path::new(temp_path).exists() {
+            let _ = std::fs::remove_file(temp_path);
+        }
+
+        // Try libcamera-still first
+        let result = Command::new("libcamera-still")
+            .args(&[
+                "-o", temp_path,
+                "--width", "1024",
+                "--height", "768", 
+                "--quality", "85",
+                "--immediate",
+                "--nopreview",
+                "--timeout", "1000"
+            ])
+            .output();
+
+        let success = match result {
+            Ok(output) => {
+                if output.status.success() {
+                    true
+                } else {
+                    // Try raspistill fallback
+                    let legacy_result = Command::new("raspistill")
+                        .args(&["-o", temp_path, "-w", "1024", "-h", "768", "-q", "85", "-t", "1000", "-n"])
+                        .output();
+                    
+                    match legacy_result {
+                        Ok(output) => output.status.success(),
+                        Err(_) => false
+                    }
+                }
+            }
+            Err(_) => false
+        };
+
+        if !success {
+            return Err(anyhow!("Failed to capture photo with camera"));
+        }
+
+        // Load the image
+        match image::open(temp_path) {
+            Ok(img) => {
+                let rgb_img = img.to_rgb8();
+                // Clean up
+                let _ = std::fs::remove_file(temp_path);
+                Ok(rgb_img)
+            }
+            Err(e) => {
+                Err(anyhow!("Failed to load captured image: {}", e))
+            }
         }
     }
 
