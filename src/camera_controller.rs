@@ -1,37 +1,50 @@
 use anyhow::{anyhow, Result};
 use image::{RgbImage, ImageBuffer};
 use std::path::Path;
-use std::process::Command;
-use tokio::time::{Duration, sleep};
-use tokio::fs;
+use std::process::{Command, Child, Stdio};
+use std::time::{Duration, Instant};
+use std::sync::{Arc, Mutex};
+use std::thread;
 
 /// Camera controller for Raspberry Pi Camera v1.5 using libcamera
+/// Uses a hybrid approach: background preview stream + on-demand still capture
 pub struct CameraController {
-    /// Camera settings
-    width: u32,
-    height: u32,
+    /// Camera settings for still capture
+    capture_width: u32,
+    capture_height: u32,
     quality: u8,
-    /// Temporary file path for captured images
-    temp_image_path: String,
-    /// Preview image path for live feed
-    preview_image_path: String,
-    /// Whether rpicam-still is available
+    /// Preview settings (lower resolution for speed)
+    preview_width: u32,
+    preview_height: u32,
+    /// Temporary file paths
+    temp_capture_path: String,
+    temp_preview_path: String,
+    /// Whether rpicam commands are available
     is_available: bool,
-    /// Preview process handle
-    preview_process: Option<std::process::Child>,
+    /// Background preview process (rpicam-vid or frame capture loop)
+    preview_process: Option<Child>,
+    /// Timing control for preview updates
+    last_preview_update: Instant,
+    preview_interval: Duration,
 }
 
 impl CameraController {
     /// Create a new camera controller
     pub fn new() -> Result<Self> {
         let mut controller = CameraController {
-            width: 800,  // Good size for preview
-            height: 600,
-            quality: 85,  // JPEG quality (0-100)
-            temp_image_path: "/tmp/pixelsort_camera_capture.jpg".to_string(),
-            preview_image_path: "/tmp/pixelsort_camera_preview.jpg".to_string(),
+            // High resolution for final captures
+            capture_width: 1024,
+            capture_height: 768,
+            quality: 90,  // High quality for pixel sorting
+            // Lower resolution for smooth preview
+            preview_width: 640,
+            preview_height: 480,
+            temp_capture_path: "/tmp/pixelsort_capture.jpg".to_string(),
+            temp_preview_path: "/tmp/pixelsort_preview.jpg".to_string(),
             is_available: false,
             preview_process: None,
+            last_preview_update: Instant::now(),
+            preview_interval: Duration::from_millis(100), // 10 FPS preview
         };
 
         controller.initialize()?;
@@ -209,18 +222,21 @@ impl CameraController {
         self.is_available
     }
 
-    /// Start live preview (just mark as available)
+    /// Start live preview using optimized approach
     pub fn start_preview(&mut self) -> Result<()> {
-        log::info!("Starting camera preview...");
+        log::info!("Starting camera preview system...");
         
         if !self.is_available {
             log::error!("Cannot start preview: Camera not available");
             return Err(anyhow!("Camera not available"));
         }
 
-        // For rpicam-still, we don't need a continuous process
-        // We'll capture preview images on-demand in get_preview_image()
-        log::info!("Camera preview mode enabled");
+        // Clean up any existing process
+        self.stop_preview();
+
+        // We'll use on-demand preview capture with timing control
+        // This avoids the X11 preview window crashes we saw in testing
+        log::info!("Camera preview ready (using timed still captures with --nopreview)");
         Ok(())
     }
 
@@ -233,108 +249,137 @@ impl CameraController {
         }
     }
 
-    /// Get the latest preview image (non-blocking)
-    pub fn get_preview_image(&self) -> Result<RgbImage> {
+    /// Get the latest preview image with timing control (non-blocking)
+    pub fn get_preview_image(&mut self) -> Result<RgbImage> {
         if !self.is_available {
-            log::debug!("Camera not available, returning test pattern");
             // Return animated test pattern if camera not available
-            let img = ImageBuffer::from_fn(800, 600, |x, y| {
-                let time = std::time::SystemTime::now()
-                    .duration_since(std::time::UNIX_EPOCH)
-                    .unwrap_or_default()
-                    .as_secs_f32();
-                
-                let r = ((x as f32 / 800.0 * 255.0) + (time * 50.0).sin() * 50.0) as u8;
-                let g = ((y as f32 / 600.0 * 255.0) + (time * 30.0).cos() * 50.0) as u8;
-                let b = (((x + y) as f32 / 1400.0 * 255.0) + (time * 70.0).sin() * 50.0) as u8;
+            let time = std::time::SystemTime::now()
+                .duration_since(std::time::UNIX_EPOCH)
+                .unwrap_or_default()
+                .as_secs_f32();
+            
+            let img = ImageBuffer::from_fn(self.preview_width, self.preview_height, |x, y| {
+                let r = ((x as f32 / self.preview_width as f32 * 255.0) + (time * 50.0).sin() * 50.0) as u8;
+                let g = ((y as f32 / self.preview_height as f32 * 255.0) + (time * 30.0).cos() * 50.0) as u8;
+                let b = (((x + y) as f32 / (self.preview_width + self.preview_height) as f32 * 255.0) + (time * 70.0).sin() * 50.0) as u8;
                 image::Rgb([r.saturating_add(100), g.saturating_add(100), b.saturating_add(100)])
             });
             return Ok(img);
         }
 
-        // Capture a fresh preview image each time
+        // Throttle preview updates to avoid the lag we experienced
+        let now = Instant::now();
+        if now.duration_since(self.last_preview_update) < self.preview_interval {
+            // Return last captured frame or placeholder
+            return self.load_existing_preview_or_placeholder();
+        }
+        
+        self.last_preview_update = now;
+
+        // Capture fresh preview using the working --nopreview approach
         let result = Command::new("rpicam-still")
             .args(&[
-                "-o", &self.preview_image_path,
-                "--width", "800",
-                "--height", "600", 
-                "--quality", "60",  // Lower quality for speed
-                "--timeout", "50",  // Very quick capture
-                "--nopreview"
+                "-o", &self.temp_preview_path,
+                "--width", &self.preview_width.to_string(),
+                "--height", &self.preview_height.to_string(),
+                "--quality", "50",  // Lower quality for speed
+                "--timeout", "50",  // Quick capture based on our tests
+                "--nopreview",      // No X11 window (avoids crashes)
+                "--immediate"       // Take photo immediately
             ])
             .output();
 
         match result {
             Ok(output) => {
                 if !output.status.success() {
-                    log::warn!("rpicam-still preview capture failed: {}", String::from_utf8_lossy(&output.stderr));
-                    return Err(anyhow!("Preview capture failed"));
+                    log::warn!("Preview capture failed: {}", String::from_utf8_lossy(&output.stderr));
+                    return self.load_existing_preview_or_placeholder();
                 }
             }
             Err(e) => {
-                log::error!("Failed to run rpicam-still for preview: {}", e);
-                return Err(anyhow!("Preview command failed: {}", e));
+                log::error!("Preview command failed: {}", e);
+                return self.load_existing_preview_or_placeholder();
             }
         }
 
-        // Try to load the preview image
-        match image::open(&self.preview_image_path) {
+        // Load the captured preview
+        match image::open(&self.temp_preview_path) {
             Ok(img) => {
                 let rgb_img = img.to_rgb8();
-                log::debug!("Successfully captured and loaded preview image: {}x{}", rgb_img.width(), rgb_img.height());
+                log::debug!("Preview captured: {}x{}", rgb_img.width(), rgb_img.height());
                 Ok(rgb_img)
             }
-            Err(_) => {
-                // If preview image doesn't exist yet, create a loading placeholder
-                let img = ImageBuffer::from_fn(self.width, self.height, |x, y| {
-                    if (x + y) % 50 < 25 {
-                        image::Rgb([50, 50, 50])
-                    } else {
-                        image::Rgb([100, 100, 100])
-                    }
-                });
-                Ok(img)
+            Err(e) => {
+                log::debug!("Failed to load preview image: {}", e);
+                self.load_existing_preview_or_placeholder()
             }
         }
     }
 
-    /// Take a quick snapshot (for pixel sorting) 
-    pub fn capture_snapshot(&self) -> Result<RgbImage> {
-        let temp_path = "/tmp/pixelsort_snapshot.jpg";
-        
-        // Remove any existing temp file
-        if Path::new(temp_path).exists() {
-            let _ = std::fs::remove_file(temp_path);
+    /// Load existing preview file or return placeholder
+    fn load_existing_preview_or_placeholder(&self) -> Result<RgbImage> {
+        // Try to load existing preview file
+        if let Ok(img) = image::open(&self.temp_preview_path) {
+            return Ok(img.to_rgb8());
         }
 
-        // Take a high-quality snapshot
+        // Return placeholder pattern
+        let img = ImageBuffer::from_fn(self.preview_width, self.preview_height, |x, y| {
+            if (x + y) % 40 < 20 {
+                image::Rgb([60, 60, 60])
+            } else {
+                image::Rgb([80, 80, 80])
+            }
+        });
+        Ok(img)
+    }
+
+    /// Take a high-quality snapshot for pixel sorting
+    pub fn capture_snapshot(&self) -> Result<RgbImage> {
+        if !self.is_available {
+            return Err(anyhow!("Camera not available"));
+        }
+
+        // Remove any existing capture file
+        if Path::new(&self.temp_capture_path).exists() {
+            let _ = std::fs::remove_file(&self.temp_capture_path);
+        }
+
+        log::info!("Taking high-quality snapshot for pixel sorting...");
+
+        // Take a high-quality snapshot using the working approach
         let result = Command::new("rpicam-still")
             .args(&[
-                "-o", temp_path,
-                "--width", &self.width.to_string(),
-                "--height", &self.height.to_string(),
+                "-o", &self.temp_capture_path,
+                "--width", &self.capture_width.to_string(),
+                "--height", &self.capture_height.to_string(),
                 "--quality", &self.quality.to_string(),
                 "--immediate",
                 "--nopreview",
-                "--timeout", "100"  // Very quick capture
+                "--timeout", "1000"  // 1 second for high quality
             ])
             .output();
 
-        let success = match result {
-            Ok(output) => output.status.success(),
-            Err(_) => false
-        };
-
-        if !success {
-            return Err(anyhow!("Failed to capture snapshot"));
+        match result {
+            Ok(output) => {
+                if !output.status.success() {
+                    log::error!("Snapshot capture failed: {}", String::from_utf8_lossy(&output.stderr));
+                    return Err(anyhow!("rpicam-still failed"));
+                }
+            }
+            Err(e) => {
+                log::error!("Failed to execute rpicam-still: {}", e);
+                return Err(anyhow!("Command execution failed: {}", e));
+            }
         }
 
-        // Load the image
-        match image::open(temp_path) {
+        // Load and return the captured image
+        match image::open(&self.temp_capture_path) {
             Ok(img) => {
                 let rgb_img = img.to_rgb8();
-                // Clean up
-                let _ = std::fs::remove_file(temp_path);
+                log::info!("Snapshot captured successfully: {}x{}", rgb_img.width(), rgb_img.height());
+                // Clean up temp file
+                let _ = std::fs::remove_file(&self.temp_capture_path);
                 Ok(rgb_img)
             }
             Err(e) => {

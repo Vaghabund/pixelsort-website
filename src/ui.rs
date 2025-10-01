@@ -34,6 +34,7 @@ pub struct PixelSorterApp {
     show_file_dialog: bool,
     preview_mode: bool,  // Whether showing live preview or processed image
     preview_started: bool,  // Whether camera preview has been started
+    last_preview_update: std::time::Instant,  // Timer for preview updates
 }
 
 impl PixelSorterApp {
@@ -68,6 +69,7 @@ impl PixelSorterApp {
             show_file_dialog: false,
             preview_mode: true,  // Start in preview mode
             preview_started: false,  // Preview not yet started
+            last_preview_update: std::time::Instant::now(),
         };
 
         // Note: Camera preview will be started in the first update loop
@@ -271,11 +273,16 @@ impl PixelSorterApp {
     }
 
     fn update_preview(&mut self, ctx: &egui::Context) {
+        // Only update preview every 300ms to avoid lag
+        if self.last_preview_update.elapsed() < std::time::Duration::from_millis(300) {
+            return;
+        }
+        
         if let Some(ref camera) = self.camera_controller {
             // Get latest preview image
             let preview_result = tokio::task::block_in_place(|| {
                 tokio::runtime::Handle::current().block_on(async {
-                    let camera_lock = camera.read().await;
+                    let mut camera_lock = camera.write().await;
                     camera_lock.get_preview_image()
                 })
             });
@@ -297,9 +304,17 @@ impl PixelSorterApp {
                     };
 
                     self.preview_texture = Some(ctx.load_texture("preview_image", color_image, egui::TextureOptions::default()));
+                    self.last_preview_update = std::time::Instant::now();
+                    
+                    // Update status to show preview is working
+                    if self.status_message.starts_with("Camera preview") || self.status_message.contains("Failed") {
+                        self.status_message = "Live preview active - Press button to capture!".to_string();
+                    }
                 }
-                Err(_) => {
-                    // Silently fail - preview updates can be intermittent
+                Err(e) => {
+                    // Update status message to show what's wrong
+                    self.status_message = format!("Camera preview error: {}", e);
+                    self.last_preview_update = std::time::Instant::now();
                 }
             }
         }
