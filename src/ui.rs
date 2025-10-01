@@ -49,7 +49,7 @@ impl PixelSorterApp {
             "Ready - Load an image to begin"
         };
 
-        let mut app = Self {
+        let app = Self {
             pixel_sorter,
             image_processor,
             gpio_controller,
@@ -242,7 +242,7 @@ impl PixelSorterApp {
             pixels,
         };
 
-        self.processed_texture = Some(ctx.load_texture("processed_image", color_image, egui::TextureOptions::default()));
+        self.image_texture = Some(ctx.load_texture("processed_image", color_image, egui::TextureOptions::default()));
     }
 
     fn update_preview(&mut self, ctx: &egui::Context) {
@@ -280,8 +280,8 @@ impl PixelSorterApp {
         }
     }
 
-    fn handle_gpio_input(&mut self, ctx: &egui::Context) {
-        if let Some(ref gpio_controller) = self.gpio_controller {
+    fn handle_gpio_input(&mut self, _ctx: &egui::Context) {
+        if let Some(ref _gpio_controller) = self.gpio_controller {
             // In a real implementation, you'd poll for button presses here
             // For now, we'll handle this in the GPIO controller itself
         }
@@ -378,10 +378,10 @@ impl eframe::App for PixelSorterApp {
                                 },
                             );
                         }
-                    } else if let Some(ref texture) = self.processed_texture {
+                    } else if let Some(ref texture) = self.image_texture {
                         // Show processed image
                         let available_size = ui.available_size();
-                        let image_size = texture.size_vec2();
+                        let image_size = egui::Vec2::new(texture.size()[0] as f32, texture.size()[1] as f32);
                         
                         // Calculate display size maintaining aspect ratio
                         let scale = (available_size.x / image_size.x).min(available_size.y / image_size.y).min(1.0);

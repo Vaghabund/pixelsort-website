@@ -1,7 +1,7 @@
 use anyhow::{Context, Result};
-use image::{DynamicImage, ImageBuffer, Rgb, RgbImage};
+use image::{ImageBuffer, Rgb, RgbImage};
 use std::path::{Path, PathBuf};
-use log::{info, warn};
+use log::info;
 
 pub struct ImageProcessor {
     supported_formats: Vec<&'static str>,
@@ -186,7 +186,7 @@ impl ImageProcessor {
     }
 
     fn create_color_bands_image(&self, width: u32, height: u32) -> RgbImage {
-        ImageBuffer::from_fn(width, height, |x, y| {
+        ImageBuffer::from_fn(width, height, |x, _y| {
             let band_width = width / 6;
             let band_index = x / band_width;
             

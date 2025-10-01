@@ -1,5 +1,5 @@
 use anyhow::Result;
-use image::{ImageBuffer, Rgb, RgbImage};
+use image::{Rgb, RgbImage};
 use std::cmp::Ordering;
 
 #[derive(Debug, Clone, Copy)]
@@ -8,6 +8,12 @@ pub enum SortingAlgorithm {
     Vertical,
     Diagonal,
     Radial,
+}
+
+impl std::fmt::Display for SortingAlgorithm {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        write!(f, "{}", self.name())
+    }
 }
 
 impl SortingAlgorithm {
@@ -64,7 +70,7 @@ impl PixelSorter {
         algorithm: SortingAlgorithm,
         params: &SortingParameters,
     ) -> Result<RgbImage> {
-        let (width, height) = image.dimensions();
+        let (_width, _height) = image.dimensions();
         let mut result = image.clone();
 
         match algorithm {
@@ -81,7 +87,7 @@ impl PixelSorter {
         let (width, height) = image.dimensions();
         
         for y in (0..height).step_by(params.interval) {
-            let mut row_pixels: Vec<(usize, Rgb<u8>)> = (0..width)
+            let row_pixels: Vec<(usize, Rgb<u8>)> = (0..width)
                 .map(|x| (x as usize, *image.get_pixel(x, y)))
                 .collect();
 
@@ -104,7 +110,7 @@ impl PixelSorter {
         let (width, height) = image.dimensions();
         
         for x in (0..width).step_by(params.interval) {
-            let mut col_pixels: Vec<(usize, Rgb<u8>)> = (0..height)
+            let col_pixels: Vec<(usize, Rgb<u8>)> = (0..height)
                 .map(|y| (y as usize, *image.get_pixel(x, y)))
                 .collect();
 
@@ -258,7 +264,7 @@ impl PixelSorter {
         params: &SortingParameters,
     ) -> Result<RgbImage> {
         // Create a faster preview by processing at lower resolution
-        let (width, height) = image.dimensions();
+        let (_width, _height) = image.dimensions();
         let scale_factor = 4; // Process every 4th pixel
         
         let preview_params = SortingParameters {

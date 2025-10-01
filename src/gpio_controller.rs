@@ -4,7 +4,7 @@ use std::collections::HashMap;
 use std::sync::Arc;
 use tokio::sync::{mpsc, RwLock};
 use tokio::time::{Duration, Instant};
-use log::{info, warn, error};
+use log::{info, error};
 
 #[derive(Debug, Clone, Copy)]
 pub struct ButtonConfig {
