@@ -121,26 +121,26 @@ impl eframe::App for PixelSorterApp {
 
                     // Camera/Mode controls
                     if self.preview_mode {
-                        let capture_button = egui::Button::new("📸 Capture & Sort").min_size([200.0, 50.0].into());
+                        let capture_button = egui::Button::new("Capture & Sort").min_size([200.0, 50.0].into());
                         if ui.add_enabled(!self.is_processing, capture_button).clicked() {
                             self.capture_and_sort(ctx);
                         }
                     } else {
-                        if ui.add_sized([200.0, 50.0], egui::Button::new("📷 Back to Preview")).clicked() {
+                        if ui.add_sized([200.0, 50.0], egui::Button::new("Back to Preview")).clicked() {
                             self.preview_mode = true;
                             self.status_message = "Live preview active - Press button to capture!".to_string();
                         }
                     }
 
-                    if ui.add_sized([200.0, 50.0], egui::Button::new("📁 Load Image")).clicked() {
+                    if ui.add_sized([200.0, 50.0], egui::Button::new("Load Image")).clicked() {
                         self.load_image(ctx);
                     }
 
-                    if ui.add_sized([200.0, 50.0], egui::Button::new("💾 Save Result")).clicked() {
+                    if ui.add_sized([200.0, 50.0], egui::Button::new("Save Result")).clicked() {
                         self.save_image();
                     }
 
-                    if ui.add_sized([200.0, 50.0], egui::Button::new("📀 Save to USB")).clicked() {
+                    if ui.add_sized([200.0, 50.0], egui::Button::new("Save to USB")).clicked() {
                         match self.copy_to_usb() {
                             Ok(()) => {
                                 self.status_message = "Successfully copied to USB!".to_string();
@@ -153,12 +153,12 @@ impl eframe::App for PixelSorterApp {
 
                     ui.add_space(10.0);
 
-                    if ui.add_sized([200.0, 50.0], egui::Button::new("⛶ Force Fullscreen")).clicked() {
+                    if ui.add_sized([200.0, 50.0], egui::Button::new("Force Fullscreen")).clicked() {
                         ctx.send_viewport_cmd(egui::ViewportCommand::Fullscreen(true));
                         ctx.send_viewport_cmd(egui::ViewportCommand::Maximized(true));
                     }
 
-                    if ui.add_sized([200.0, 50.0], egui::Button::new("❌ Exit")).clicked() {
+                    if ui.add_sized([200.0, 50.0], egui::Button::new("Exit")).clicked() {
                         std::process::exit(0);
                     }
 
@@ -230,7 +230,7 @@ impl eframe::App for PixelSorterApp {
                         ui.label("GPIO Buttons:");
                         ui.label("1: Load Image");
                         if self.camera_controller.is_some() {
-                            ui.label("2: Capture & Sort 📸");
+                            ui.label("2: Capture & Sort");
                             ui.label("3: Next Algorithm");
                             ui.label("4: Threshold ↑");
                             ui.label("5: Threshold ↓");
@@ -539,14 +539,7 @@ impl PixelSorterApp {
         }
         
         self.status_message = format!("Button {} pressed - {}", button, self.current_algorithm.name());
-    # Clean up old systemd temp files
-    sudo find /tmp -name "systemd-private-*" -type d -mtime +1 -exec rm -rf {} +
-    
-    # Clean up old namespace files  
-    sudo find /tmp -name "namespace-dev-*" -type f -mtime +1 -delete
-    
-    # Or just reboot (cleanest option)
-    sudo reboot    }
+    }
 
     fn auto_save_image(&self, image: &image::RgbImage, algorithm: &SortingAlgorithm) -> Result<(), Box<dyn std::error::Error>> {
         // Create sorted_images directory if it doesn't exist
@@ -584,7 +577,7 @@ impl PixelSorterApp {
                         if usb_path.is_dir() {
                             // Try to copy sorted_images folder to USB
                             let dest_path = usb_path.join("sorted_images");
-                            if let Ok(()) = self.copy_directory(PathBuf::from("sorted_images"), &dest_path) {
+                            if let Ok(()) = self.copy_directory(PathBuf::from("sorted_images"), dest_path) {
                                 println!("Successfully copied to USB: {}", dest_path.display());
                                 usb_found = true;
                                 break;
