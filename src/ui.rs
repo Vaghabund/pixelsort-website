@@ -97,20 +97,9 @@ impl eframe::App for PixelSorterApp {
 
                     match preview_result {
                         Ok(preview_image) => {
-                            // Only update texture if image data actually changed or this is the first frame
-                            let should_update_texture = match &self.camera_image_data {
-                                None => true,
-                                Some(old_image) => {
-                                    // Simple comparison - if dimensions changed, definitely update
-                                    old_image.width() != preview_image.width() ||
-                                    old_image.height() != preview_image.height()
-                                }
-                            };
-                            
-                            if should_update_texture {
-                                self.camera_image_data = Some(preview_image.clone());
-                                self.create_camera_texture(ctx, preview_image);
-                            }
+                            // Always update texture for live feed - the shrinking was fixed by other means
+                            self.camera_image_data = Some(preview_image.clone());
+                            self.create_camera_texture(ctx, preview_image);
                             self.last_camera_update = Some(now);
                         }
                         Err(_) => {
@@ -246,12 +235,16 @@ impl eframe::App for PixelSorterApp {
                 // Show camera preview or prompt
                 if let Some(ref _camera) = self.camera_controller {
                     if let Some(texture) = &self.camera_texture {
-                        // Use FIXED size to eliminate any scaling feedback loops
+                        // Use max_size to fit available space but prevent scaling feedback
                         ui.centered_and_justified(|ui| {
-                            let fixed_size = egui::vec2(640.0, 480.0); // Fixed camera preview size
+                            let available_size = ui.available_size();
+                            let max_size = egui::vec2(
+                                available_size.x.min(640.0),
+                                available_size.y.min(480.0)
+                            );
                             ui.add(
                                 egui::Image::new(texture)
-                                    .fit_to_exact_size(fixed_size)
+                                    .max_size(max_size)
                                     .rounding(egui::Rounding::same(8.0))
                             );
                         });
@@ -268,12 +261,11 @@ impl eframe::App for PixelSorterApp {
             } else {
                 // Show processed image
                 if let Some(texture) = &self.processed_texture {
-                    // Use simple fit_to_size without complex calculations
+                    // Use max_size to fit available space
                     ui.centered_and_justified(|ui| {
                         ui.add(
                             egui::Image::new(texture)
                                 .max_size(ui.available_size())
-                                .fit_to_original_size(1.0)
                                 .rounding(egui::Rounding::same(8.0))
                         );
                     });
