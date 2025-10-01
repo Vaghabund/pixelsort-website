@@ -9,12 +9,14 @@ mod gpio_controller;
 mod image_processor;
 mod pixel_sorter;
 mod ui;
+mod camera_controller;
 
 use crate::config::Config;
 use crate::gpio_controller::GpioController;
 use crate::image_processor::ImageProcessor;
 use crate::pixel_sorter::PixelSorter;
 use crate::ui::PixelSorterApp;
+use crate::camera_controller::CameraController;
 
 #[tokio::main]
 async fn main() -> Result<()> {
@@ -37,6 +39,18 @@ async fn main() -> Result<()> {
         }
         Err(e) => {
             log::warn!("GPIO initialization failed: {}. Running in simulation mode.", e);
+            None
+        }
+    };
+
+    // Initialize Camera controller  
+    let camera_controller = match CameraController::new() {
+        Ok(controller) => {
+            info!("Camera controller initialized successfully");
+            Some(Arc::new(RwLock::new(controller)))
+        }
+        Err(e) => {
+            log::warn!("Camera initialization failed: {}. Camera features disabled.", e);
             None
         }
     };
@@ -68,6 +82,7 @@ async fn main() -> Result<()> {
                 pixel_sorter,
                 image_processor,
                 gpio_controller,
+                camera_controller,
                 config,
             ))
         }),

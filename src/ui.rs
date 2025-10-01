@@ -8,11 +8,13 @@ use crate::config::Config;
 use crate::gpio_controller::GpioController;
 use crate::image_processor::ImageProcessor;
 use crate::pixel_sorter::{PixelSorter, SortingAlgorithm, SortingParameters};
+use crate::camera_controller::CameraController;
 
 pub struct PixelSorterApp {
     pixel_sorter: Arc<PixelSorter>,
     image_processor: Arc<RwLock<ImageProcessor>>,
     gpio_controller: Option<Arc<RwLock<GpioController>>>,
+    camera_controller: Option<Arc<RwLock<CameraController>>>,
     config: Config,
     
     // UI State
@@ -35,12 +37,20 @@ impl PixelSorterApp {
         pixel_sorter: Arc<PixelSorter>,
         image_processor: Arc<RwLock<ImageProcessor>>,
         gpio_controller: Option<Arc<RwLock<GpioController>>>,
+        camera_controller: Option<Arc<RwLock<CameraController>>>,
         config: Config,
     ) -> Self {
+        let status_msg = if camera_controller.is_some() {
+            "Ready - Load an image or take a photo to begin"
+        } else {
+            "Ready - Load an image to begin"
+        };
+
         Self {
             pixel_sorter,
             image_processor,
             gpio_controller,
+            camera_controller,
             config,
             current_algorithm: SortingAlgorithm::Horizontal,
             sorting_params: SortingParameters::default(),
@@ -48,7 +58,7 @@ impl PixelSorterApp {
             processed_image: None,
             image_texture: None,
             is_processing: false,
-            status_message: "Ready - Load an image to begin".to_string(),
+            status_message: status_msg.to_string(),
             show_file_dialog: false,
         }
     }
@@ -91,6 +101,35 @@ impl PixelSorterApp {
             }
         } else {
             self.status_message = "No processed image to save".to_string();
+        }
+    }
+
+    fn take_photo(&mut self, ctx: &egui::Context) {
+        if let Some(ref camera) = self.camera_controller {
+            self.is_processing = true;
+            self.status_message = "Taking photo...".to_string();
+            
+            // For now, create a blocking runtime to handle the async operation
+            // In a real app, you'd want to use proper async state management
+            let camera_clone = camera.clone();
+            let rt = tokio::runtime::Runtime::new().unwrap();
+            
+            match rt.block_on(async {
+                let mut camera_lock = camera_clone.write().await;
+                camera_lock.take_photo().await
+            }) {
+                Ok(rgb_img) => {
+                    self.original_image = Some(rgb_img);
+                    self.status_message = "Photo captured successfully!".to_string();
+                    self.process_image(ctx);
+                }
+                Err(e) => {
+                    self.status_message = format!("Failed to take photo: {}", e);
+                    self.is_processing = false;
+                }
+            }
+        } else {
+            self.status_message = "Camera not available".to_string();
         }
     }
 
@@ -143,22 +182,23 @@ impl PixelSorterApp {
     pub fn on_button_press(&mut self, button_id: u8, ctx: &egui::Context) {
         match button_id {
             1 => self.load_image(ctx), // Load image
-            2 => {
+            2 => self.take_photo(ctx), // Take photo (if camera available)
+            3 => {
                 // Next algorithm
                 self.current_algorithm = self.current_algorithm.next();
                 self.process_image(ctx);
             }
-            3 => {
+            4 => {
                 // Threshold up
                 self.sorting_params.threshold = (self.sorting_params.threshold + 10.0).min(255.0);
                 self.process_image(ctx);
             }
-            4 => {
+            5 => {
                 // Threshold down
                 self.sorting_params.threshold = (self.sorting_params.threshold - 10.0).max(0.0);
                 self.process_image(ctx);
             }
-            5 => self.save_image(), // Save image
+            6 => self.save_image(), // Save image
             _ => {}
         }
     }
@@ -217,6 +257,16 @@ impl eframe::App for PixelSorterApp {
                     // Load/Save buttons
                     if ui.add_sized([200.0, 50.0], egui::Button::new("📁 Load Image")).clicked() {
                         self.load_image(ctx);
+                    }
+
+                    // Camera button (only show if camera is available)
+                    if self.camera_controller.is_some() {
+                        let camera_enabled = !self.is_processing;
+                        let camera_button = egui::Button::new("📷 Take Photo").min_size([200.0, 50.0].into());
+                        
+                        if ui.add_enabled(camera_enabled, camera_button).clicked() {
+                            self.take_photo(ctx);
+                        }
                     }
 
                     if ui.add_sized([200.0, 50.0], egui::Button::new("💾 Save Result")).clicked() {
@@ -306,16 +356,28 @@ impl eframe::App for PixelSorterApp {
                         ui.add_space(10.0);
                         ui.label("GPIO Buttons:");
                         ui.label("1: Load Image");
-                        ui.label("2: Next Algorithm");
-                        ui.label("3: Threshold ↑");
-                        ui.label("4: Threshold ↓");
-                        ui.label("5: Save Image");
+                        if self.camera_controller.is_some() {
+                            ui.label("2: Take Photo 📷");
+                            ui.label("3: Next Algorithm");
+                            ui.label("4: Threshold ↑");
+                            ui.label("5: Threshold ↓");
+                            ui.label("6: Save Image");
+                        } else {
+                            ui.label("2: Next Algorithm");
+                            ui.label("3: Threshold ↑");
+                            ui.label("4: Threshold ↓");
+                            ui.label("5: Save Image");
+                        }
                         ui.label("ESC or Exit Button: Quit");
                     } else {
                         ui.separator();
                         ui.add_space(10.0);
                         ui.label("Keyboard Shortcuts:");
-                        ui.label("1-5: Button functions");
+                        if self.camera_controller.is_some() {
+                            ui.label("1-6: Button functions");
+                        } else {
+                            ui.label("1-5: Button functions");
+                        }
                         ui.label("ESC or Exit Button: Quit");
                     }
                 });
@@ -332,6 +394,7 @@ impl eframe::App for PixelSorterApp {
                         egui::Key::Num3 => self.on_button_press(3, ctx),
                         egui::Key::Num4 => self.on_button_press(4, ctx),
                         egui::Key::Num5 => self.on_button_press(5, ctx),
+                        egui::Key::Num6 => self.on_button_press(6, ctx),
                         egui::Key::Escape => std::process::exit(0),
                         _ => {}
                     }

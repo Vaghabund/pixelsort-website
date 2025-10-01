@@ -20,6 +20,9 @@ egui_extras = "0.24"
 # GPIO control for Raspberry Pi
 rppal = { version = "0.14", optional = true }
 
+# Raspberry Pi Camera support
+rascam = { version = "0.2", optional = true }
+
 # Async runtime and utilities
 tokio = { version = "1.0", features = ["full"] }
 crossbeam = "0.8"
@@ -61,6 +64,7 @@ name = "pixelsort-pi"
 path = "src/main.rs"
 
 [features]
-default = ["gpio"]
+default = ["gpio", "camera"]
 gpio = ["rppal"]
+camera = ["rascam"]
 dev-simulation = ["gilrs"]
