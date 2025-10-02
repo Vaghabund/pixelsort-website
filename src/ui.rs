@@ -394,25 +394,6 @@ impl PixelSorterApp {
         }
     }
 
-    fn create_camera_texture(&mut self, ctx: &egui::Context, image: image::RgbImage) {
-        let size = [image.width() as usize, image.height() as usize];
-        let pixels = image.as_flat_samples();
-        
-        let color_image = egui::ColorImage::from_rgb(size, pixels.as_slice());
-        
-        // Reuse existing texture if available to reduce memory allocations
-        match &mut self.camera_texture {
-            Some(texture) => {
-                // Update existing texture instead of creating new one
-                texture.set(color_image, egui::TextureOptions::LINEAR);
-            }
-            None => {
-                let texture = ctx.load_texture("camera_preview", color_image, egui::TextureOptions::LINEAR);
-                self.camera_texture = Some(texture);
-            }
-        }
-    }
-
     // High-performance texture update that avoids unnecessary copying
     fn update_camera_texture(&mut self, ctx: &egui::Context, image: &image::RgbImage) {
         let size = [image.width() as usize, image.height() as usize];
