@@ -621,7 +621,6 @@ impl PixelSorterApp {
         self.processed_image = None;
         self.camera_texture = None;
         self.processed_texture = None;
-        self.camera_image_data = None;
         self.last_camera_update = None; // Reset camera timer to immediately start fresh
         self.preview_mode = true;
         self.status_message = "Live preview reactivated - Press button to capture!".to_string();
