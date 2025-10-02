@@ -6,7 +6,6 @@ use std::io::Read;
 use std::sync::mpsc::{self, Receiver, Sender};
 use std::thread;
 use std::process::Command;
-use std::time::Instant;
 
 /// Camera controller for Raspberry Pi Camera v1.5 using libcamera
 /// Uses streaming approach for live preview + on-demand still capture
@@ -118,7 +117,7 @@ impl CameraController {
         self.frame_receiver = Some(receiver);
 
         // Start streaming process
-        let mut process = Command::new("rpicam-vid")
+        let process = Command::new("rpicam-vid")
             .args(&[
                 "--output", "-",  // Output to stdout
                 "--width", &self.preview_width.to_string(),
@@ -140,7 +139,6 @@ impl CameraController {
 
         let stream_thread = thread::spawn(move || {
             let mut buffer = Vec::new();
-            let mut jpeg_start = false;
 
             loop {
                 let mut temp_buf = [0u8; 4096];

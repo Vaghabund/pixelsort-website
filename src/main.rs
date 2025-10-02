@@ -20,9 +20,9 @@ use crate::camera_controller::CameraController;
 
 #[tokio::main]
 async fn main() -> Result<()> {
-    // Set up detailed logging
+    // Set up logging (Info level for production)
     env_logger::Builder::from_default_env()
-        .filter_level(log::LevelFilter::Debug)
+        .filter_level(log::LevelFilter::Info)
         .init();
     
     info!("Starting Raspberry Pi Pixel Sorter (Rust Edition)");

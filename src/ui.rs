@@ -38,7 +38,6 @@ pub struct PixelSorterApp {
     pub crop_mode: bool,
     pub crop_rect: Option<egui::Rect>,
     pub selection_start: Option<egui::Pos2>,
-    pub exit_requested: bool,
 }
 
 impl PixelSorterApp {
@@ -82,7 +81,6 @@ impl PixelSorterApp {
             crop_mode: false,
             crop_rect: None,
             selection_start: None,
-            exit_requested: false,
         }
     }
 
@@ -91,11 +89,6 @@ impl PixelSorterApp {
 
 impl eframe::App for PixelSorterApp {
     fn update(&mut self, ctx: &egui::Context, _frame: &mut eframe::Frame) -> bool {
-        // Check if exit was requested
-        if self.exit_requested {
-            return false;
-        }
-
         // Camera preview is now handled directly in the update loop below
 
         // High-performance 30 FPS camera updates - eliminate all bottlenecks
@@ -261,7 +254,6 @@ impl eframe::App for PixelSorterApp {
             });
 
         // Bottom overlay with context-sensitive controls
-        let screen_rect = ctx.screen_rect();
         egui::Area::new("bottom_controls")
             .anchor(egui::Align2::LEFT_BOTTOM, egui::vec2(10.0, -10.0))
             .show(ctx, |ui| {
@@ -288,7 +280,7 @@ impl eframe::App for PixelSorterApp {
 
                                 // Exit button
                                 if ui.button("Exit").clicked() {
-                                    self.exit_requested = true;
+                                    ctx.send_viewport_cmd(egui::ViewportCommand::Close);
                                 }
                             });
                         });
