@@ -461,9 +461,9 @@ impl CameraController {
 
 impl Drop for CameraController {
     fn drop(&mut self) {
-        // Stop preview process
-        self.stop_preview();
-        
+        // Stop streaming process
+        self.stop_streaming();
+
         // Clean up any remaining temp files
         if Path::new(&self.temp_capture_path).exists() {
             let _ = std::fs::remove_file(&self.temp_capture_path);
@@ -471,11 +471,5 @@ impl Drop for CameraController {
         if Path::new(&self.temp_preview_path).exists() {
             let _ = std::fs::remove_file(&self.temp_preview_path);
         }
-    }
-}
-
-impl Drop for CameraController {
-    fn drop(&mut self) {
-        self.stop_streaming();
     }
 }
