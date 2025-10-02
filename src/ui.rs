@@ -40,6 +40,7 @@ pub struct PixelSorterApp {
     pub crop_rect: Option<egui::Rect>,
     pub pan_offset: egui::Vec2,
     pub selection_start: Option<egui::Pos2>,
+    pub exit_requested: bool,
 }
 
 impl PixelSorterApp {
@@ -85,6 +86,7 @@ impl PixelSorterApp {
             crop_rect: None,
             pan_offset: egui::Vec2::ZERO,
             selection_start: None,
+            exit_requested: false,
         }
     }
 
@@ -92,7 +94,12 @@ impl PixelSorterApp {
 }
 
 impl eframe::App for PixelSorterApp {
-    fn update(&mut self, ctx: &egui::Context, _frame: &mut eframe::Frame) {
+    fn update(&mut self, ctx: &egui::Context, _frame: &mut eframe::Frame) -> bool {
+        // Check if exit was requested
+        if self.exit_requested {
+            return false;
+        }
+
         // Camera preview is now handled directly in the update loop below
 
         // High-performance 30 FPS camera updates - eliminate all bottlenecks
@@ -312,7 +319,7 @@ impl eframe::App for PixelSorterApp {
 
                                 // Exit button
                                 if ui.button("Exit").clicked() {
-                                    std::process::exit(0);
+                                    self.exit_requested = true;
                                 }
                             });
                         });
@@ -433,6 +440,8 @@ impl eframe::App for PixelSorterApp {
         if self.preview_mode && self.camera_controller.is_some() && !self.is_processing {
             ctx.request_repaint_after(std::time::Duration::from_millis(33)); // 30 FPS
         }
+
+        true
     }
 }
 
