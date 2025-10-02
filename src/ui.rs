@@ -287,7 +287,7 @@ impl eframe::App for PixelSorterApp {
         // Bottom overlay with context-sensitive controls
         let screen_rect = ctx.screen_rect();
         egui::Area::new("bottom_controls")
-            .fixed_pos(egui::pos2(10.0, screen_rect.height() - 150.0))
+            .anchor(egui::Align2::LEFT_BOTTOM, egui::vec2(10.0, -10.0))
             .show(ctx, |ui| {
                 ui.visuals_mut().window_fill = egui::Color32::from_black_alpha(180);
                 egui::Frame::window(&ui.style()).show(ui, |ui| {
@@ -896,18 +896,10 @@ impl PixelSorterApp {
 
                 match pixel_sorter.sort_pixels(&cropped, algorithm, &params) {
                     Ok(sorted_cropped) => {
-                        // Create a new image with the sorted crop placed back in the original position
-                        let mut result = original.clone();
-
-                        for y in 0..crop_height {
-                            for x in 0..crop_width {
-                                let pixel = sorted_cropped.get_pixel(x, y);
-                                result.put_pixel(crop_min_x + x, crop_min_y + y, *pixel);
-                            }
-                        }
-
-                        self.processed_image = Some(result.clone());
-                        self.create_processed_texture(ctx, result);
+                        // Make the sorted cropped region the new full image
+                        self.original_image = Some(sorted_cropped.clone());
+                        self.processed_image = Some(sorted_cropped.clone());
+                        self.create_processed_texture(ctx, sorted_cropped);
 
                         // Exit crop mode and reset zoom/pan
                         self.crop_mode = false;
