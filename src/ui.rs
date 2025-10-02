@@ -88,7 +88,7 @@ impl PixelSorterApp {
 }
 
 impl eframe::App for PixelSorterApp {
-    fn update(&mut self, ctx: &egui::Context, _frame: &mut eframe::Frame) -> bool {
+    fn update(&mut self, ctx: &egui::Context, _frame: &mut eframe::Frame) {
         // Camera preview is now handled directly in the update loop below
 
         // High-performance 30 FPS camera updates - eliminate all bottlenecks
@@ -390,8 +390,6 @@ impl eframe::App for PixelSorterApp {
         if self.preview_mode && self.camera_controller.is_some() && !self.is_processing {
             ctx.request_repaint_after(std::time::Duration::from_millis(33)); // 30 FPS
         }
-
-        true
     }
 }
 
