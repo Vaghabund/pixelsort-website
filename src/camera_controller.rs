@@ -2,11 +2,12 @@
 use anyhow::{anyhow, Result};
 use image::{RgbImage, ImageBuffer};
 use std::path::Path;
-use std::process::{Command, Child};
-use std::time::{Duration, Instant};
+use std::io::Read;
+use std::sync::mpsc::{self, Receiver, Sender};
+use std::thread;
 
 /// Camera controller for Raspberry Pi Camera v1.5 using libcamera
-/// Uses a hybrid approach: background preview stream + on-demand still capture
+/// Uses streaming approach for live preview + on-demand still capture
 pub struct CameraController {
     /// Camera settings for still capture
     capture_width: u32,
@@ -20,11 +21,16 @@ pub struct CameraController {
     temp_preview_path: String,
     /// Whether rpicam commands are available
     is_available: bool,
-    /// Background preview process (rpicam-vid or frame capture loop)
-    preview_process: Option<Child>,
-    /// Timing control for preview updates
-    last_preview_update: Instant,
-    preview_interval: Duration,
+    /// Streaming camera process for live preview
+    stream_process: Option<std::process::Child>,
+    /// Channel for receiving frames from streaming thread
+    frame_receiver: Option<Receiver<RgbImage>>,
+    /// Channel for sending frames to main thread
+    frame_sender: Option<Sender<RgbImage>>,
+    /// Streaming thread handle
+    stream_thread: Option<thread::JoinHandle<()>>,
+    /// Whether streaming is active
+    streaming_active: bool,
 }
 
 impl CameraController {
@@ -41,9 +47,11 @@ impl CameraController {
             temp_capture_path: "/tmp/pixelsort_capture.jpg".to_string(),
             temp_preview_path: "/tmp/pixelsort_preview.jpg".to_string(),
             is_available: false,
-            preview_process: None,
-            last_preview_update: Instant::now(),
-            preview_interval: Duration::from_millis(100), // 10 FPS preview
+            stream_process: None,
+            frame_receiver: None,
+            frame_sender: None,
+            stream_thread: None,
+            streaming_active: false,
         };
 
         controller.initialize()?;
@@ -96,8 +104,106 @@ impl CameraController {
         self.is_available
     }
 
-    /// Start live preview using optimized approach
-    pub fn start_preview(&mut self) -> Result<()> {
+    /// Start continuous camera streaming for live preview
+    pub fn start_streaming(&mut self) -> Result<()> {
+        if !self.is_available || self.streaming_active {
+            return Ok(());
+        }
+
+        // Create channel for frame communication
+        let (sender, receiver) = mpsc::channel();
+        self.frame_sender = Some(sender);
+        self.frame_receiver = Some(receiver);
+
+        // Start streaming process
+        let mut process = Command::new("rpicam-vid")
+            .args(&[
+                "--output", "-",  // Output to stdout
+                "--width", &self.preview_width.to_string(),
+                "--height", &self.preview_height.to_string(),
+                "--framerate", "30",  // 30 FPS streaming
+                "--codec", "mjpeg",  // MJPEG for individual frames
+                "--nopreview",
+                "--timeout", "0",  // Stream indefinitely
+                "--flush", "1",    // Flush each frame
+            ])
+            .stdout(std::process::Stdio::piped())
+            .spawn()?;
+
+        self.stream_process = Some(process);
+
+        // Start background thread to read frames
+        let frame_sender = self.frame_sender.as_ref().unwrap().clone();
+        let mut stdout = self.stream_process.as_mut().unwrap().stdout.take().unwrap();
+
+        let stream_thread = thread::spawn(move || {
+            let mut buffer = Vec::new();
+            let mut jpeg_start = false;
+
+            loop {
+                let mut temp_buf = [0u8; 4096];
+                match stdout.read(&mut temp_buf) {
+                    Ok(0) => break, // EOF
+                    Ok(n) => {
+                        buffer.extend_from_slice(&temp_buf[..n]);
+
+                        // Look for JPEG markers
+                        while let Some(start_pos) = buffer.windows(2).position(|w| w == [0xFF, 0xD8]) {
+                            if let Some(end_pos) = buffer[start_pos + 2..].windows(2).position(|w| w == [0xFF, 0xD9]) {
+                                let jpeg_end = start_pos + 2 + end_pos + 2;
+                                if jpeg_end <= buffer.len() {
+                                    let jpeg_data = &buffer[start_pos..jpeg_end];
+
+                                    // Decode JPEG frame
+                                    if let Ok(img) = image::load_from_memory_with_format(jpeg_data, image::ImageFormat::Jpeg) {
+                                        let rgb_img = img.to_rgb8();
+                                        // Send frame to main thread (non-blocking)
+                                        let _ = frame_sender.send(rgb_img);
+                                    }
+
+                                    // Remove processed data
+                                    buffer.drain(0..jpeg_end);
+                                } else {
+                                    break; // Incomplete frame
+                                }
+                            } else {
+                                break; // No end marker found
+                            }
+                        }
+                    }
+                    Err(_) => break,
+                }
+            }
+        });
+
+        self.stream_thread = Some(stream_thread);
+        self.streaming_active = true;
+
+        log::info!("Camera streaming started at {}x{} @ 30 FPS", self.preview_width, self.preview_height);
+        Ok(())
+    }
+
+    /// Stop camera streaming
+    pub fn stop_streaming(&mut self) {
+        self.streaming_active = false;
+
+        // Kill the streaming process
+        if let Some(mut process) = self.stream_process.take() {
+            let _ = process.kill();
+            let _ = process.wait();
+        }
+
+        // Join the streaming thread
+        if let Some(thread) = self.stream_thread.take() {
+            let _ = thread.join();
+        }
+
+        // Clear channels
+        self.frame_sender = None;
+        self.frame_receiver = None;
+
+        log::info!("Camera streaming stopped");
+    }
         if !self.is_available {
             return Err(anyhow!("Camera not available"));
         }
@@ -118,40 +224,34 @@ impl CameraController {
         }
     }
 
-    /// Get fast live preview image (skips corruption detection for speed)
+    /// Get fast live preview image from streaming camera
     pub fn get_fast_preview_image(&mut self) -> Result<RgbImage> {
         if !self.is_available {
             return self.get_test_pattern();
         }
 
-        // Delete existing temp file to force fresh capture
-        if std::path::Path::new(&self.temp_preview_path).exists() {
-            let _ = std::fs::remove_file(&self.temp_preview_path);
+        // Start streaming if not already active
+        if !self.streaming_active {
+            self.start_streaming()?;
+            // Give streaming a moment to start
+            std::thread::sleep(std::time::Duration::from_millis(100));
         }
 
-        // Ultra-fast capture optimized for 30+ FPS
-        let result = Command::new("rpicam-still")
-            .args(&[
-                "-o", &self.temp_preview_path,
-                "--width", &self.preview_width.to_string(),
-                "--height", &self.preview_height.to_string(),
-                "--quality", "40",  // Better quality for full-screen display
-                "--timeout", "50",  // Reasonable timeout for higher resolution
-                "--nopreview",
-                "--immediate",
-                "--encoding", "jpg" // Ensure JPEG for faster processing
-            ])
-            .output();
+        // Try to get latest frame from stream
+        if let Some(receiver) = &self.frame_receiver {
+            // Drain old frames, keep only the latest
+            let mut latest_frame = None;
+            while let Ok(frame) = receiver.try_recv() {
+                latest_frame = Some(frame);
+            }
 
-        if result.is_err() {
-            return self.get_test_pattern();
+            if let Some(frame) = latest_frame {
+                return Ok(frame);
+            }
         }
 
-        // Load without corruption detection for speed
-        match image::open(&self.temp_preview_path) {
-            Ok(img) => Ok(img.to_rgb8()),
-            Err(_) => self.get_test_pattern()
-        }
+        // Fallback to test pattern if no frames available
+        self.get_test_pattern()
     }
 
     /// Get the latest preview image with timing control (non-blocking)
@@ -371,5 +471,11 @@ impl Drop for CameraController {
         if Path::new(&self.temp_preview_path).exists() {
             let _ = std::fs::remove_file(&self.temp_preview_path);
         }
+    }
+}
+
+impl Drop for CameraController {
+    fn drop(&mut self) {
+        self.stop_streaming();
     }
 }

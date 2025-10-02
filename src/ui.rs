@@ -44,6 +44,13 @@ impl PixelSorterApp {
         camera_controller: Option<Arc<RwLock<CameraController>>>,
         config: Config,
     ) -> Self {
+        // Start camera streaming immediately if camera is available
+        if let Some(ref camera) = camera_controller {
+            if let Ok(mut camera_lock) = camera.try_write() {
+                let _ = camera_lock.start_streaming();
+            }
+        }
+
         Self {
             original_image: None,
             processed_image: None,
@@ -275,9 +282,11 @@ impl PixelSorterApp {
         if let Some(camera) = self.camera_controller.clone() {
             self.is_processing = true;
             self.status_message = "Capturing image...".to_string();
-            
-            // Use non-blocking approach
-            if let Ok(camera_lock) = camera.try_write() {
+
+            // Stop streaming during capture for better image quality
+            if let Ok(mut camera_lock) = camera.try_write() {
+                camera_lock.stop_streaming();
+
                 match camera_lock.capture_snapshot() {
                     Ok(captured_image) => {
                         self.original_image = Some(captured_image);
@@ -290,6 +299,8 @@ impl PixelSorterApp {
                     Err(e) => {
                         self.is_processing = false;
                         self.status_message = format!("Capture failed: {}", e);
+                        // Restart streaming on failure
+                        let _ = camera_lock.start_streaming();
                     }
                 }
             } else {
@@ -604,6 +615,14 @@ impl PixelSorterApp {
         self.processed_texture = None;
         self.last_camera_update = None; // Reset camera timer to immediately start fresh
         self.preview_mode = true;
+
+        // Restart camera streaming for new session
+        if let Some(ref camera) = self.camera_controller {
+            if let Ok(mut camera_lock) = camera.try_write() {
+                let _ = camera_lock.start_streaming();
+            }
+        }
+
         self.status_message = "Live preview reactivated - Press button to capture!".to_string();
     }
 
