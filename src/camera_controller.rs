@@ -5,6 +5,8 @@ use std::path::Path;
 use std::io::Read;
 use std::sync::mpsc::{self, Receiver, Sender};
 use std::thread;
+use std::process::Command;
+use std::time::Instant;
 
 /// Camera controller for Raspberry Pi Camera v1.5 using libcamera
 /// Uses streaming approach for live preview + on-demand still capture
@@ -235,100 +237,9 @@ impl CameraController {
         self.get_test_pattern()
     }
 
-    /// Get the latest preview image with timing control (non-blocking)
+    /// Get the latest preview image (now uses streaming)
     pub fn get_preview_image(&mut self) -> Result<RgbImage> {
-        if !self.is_available {
-            // Return animated test pattern if camera not available
-            let time = std::time::SystemTime::now()
-                .duration_since(std::time::UNIX_EPOCH)
-                .unwrap_or_default()
-                .as_secs_f32();
-            
-            let img = ImageBuffer::from_fn(self.preview_width, self.preview_height, |x, y| {
-                let r = ((x as f32 / self.preview_width as f32 * 255.0) + (time * 50.0).sin() * 50.0) as u8;
-                let g = ((y as f32 / self.preview_height as f32 * 255.0) + (time * 30.0).cos() * 50.0) as u8;
-                let b = (((x + y) as f32 / (self.preview_width + self.preview_height) as f32 * 255.0) + (time * 70.0).sin() * 50.0) as u8;
-                image::Rgb([r.saturating_add(100), g.saturating_add(100), b.saturating_add(100)])
-            });
-            return Ok(img);
-        }
-
-        // Throttle preview updates to avoid lag
-        let now = Instant::now();
-        if now.duration_since(self.last_preview_update) < self.preview_interval {
-            // Return last captured frame or placeholder
-            return self.load_existing_preview_or_placeholder();
-        }
-        
-        self.last_preview_update = now;
-
-        // Delete existing temp file to force fresh capture
-        if std::path::Path::new(&self.temp_preview_path).exists() {
-            let _ = std::fs::remove_file(&self.temp_preview_path);
-        }
-
-        // Capture fresh preview using the working --nopreview approach
-        let result = Command::new("rpicam-still")
-            .args(&[
-                "-o", &self.temp_preview_path,
-                "--width", &self.preview_width.to_string(),
-                "--height", &self.preview_height.to_string(),
-                "--quality", "50",  // Lower quality for speed
-                "--timeout", "30",  // Faster timeout for higher FPS
-                "--nopreview",      // No X11 window (avoids crashes)
-                "--immediate",      // Take photo immediately
-                "--flush"           // Flush any cached frames
-            ])
-            .output();
-
-        match result {
-            Ok(output) => {
-                if !output.status.success() {
-                    return self.load_existing_preview_or_placeholder();
-                }
-            }
-            Err(_) => {
-                return self.load_existing_preview_or_placeholder();
-            }
-        }
-
-        // Load the captured preview
-        match image::open(&self.temp_preview_path) {
-            Ok(img) => {
-                let rgb_img = img.to_rgb8();
-                
-                // Basic validation: check if image is completely solid color (likely corrupted)
-                if self.is_likely_corrupted(&rgb_img) {
-                    // Try one more capture
-                    let _ = std::fs::remove_file(&self.temp_preview_path);
-                    let retry_result = Command::new("rpicam-still")
-                        .args(&[
-                            "-o", &self.temp_preview_path,
-                            "--width", &self.preview_width.to_string(),
-                            "--height", &self.preview_height.to_string(),
-                            "--quality", "50",
-                            "--timeout", "200", // Longer timeout for retry
-                            "--nopreview",
-                            "--immediate"
-                        ])
-                        .output();
-                        
-                    if retry_result.is_ok() {
-                        if let Ok(retry_img) = image::open(&self.temp_preview_path) {
-                            let retry_rgb = retry_img.to_rgb8();
-                            if !self.is_likely_corrupted(&retry_rgb) {
-                                return Ok(retry_rgb);
-                            }
-                        }
-                    }
-                }
-                
-                Ok(rgb_img)
-            }
-            Err(_) => {
-                self.load_existing_preview_or_placeholder()
-            }
-        }
+        self.get_fast_preview_image()
     }
 
     /// Get animated test pattern when camera not available
