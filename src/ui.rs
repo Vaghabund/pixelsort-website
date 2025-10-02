@@ -34,6 +34,12 @@ pub struct PixelSorterApp {
     pub iteration_counter: u32,
     pub current_session_folder: Option<String>,
     pub last_camera_update: Option<Instant>,
+    // Crop functionality
+    pub crop_mode: bool,
+    pub zoom_level: f32,
+    pub crop_rect: Option<egui::Rect>,
+    pub pan_offset: egui::Vec2,
+    pub selection_start: Option<egui::Pos2>,
 }
 
 impl PixelSorterApp {
@@ -73,6 +79,12 @@ impl PixelSorterApp {
             iteration_counter: 0,
             current_session_folder: None,
             last_camera_update: None,
+            // Crop functionality
+            crop_mode: false,
+            zoom_level: 1.0,
+            crop_rect: None,
+            pan_offset: egui::Vec2::ZERO,
+            selection_start: None,
         }
     }
 
@@ -139,10 +151,103 @@ impl eframe::App for PixelSorterApp {
                     });
                 }
             } else {
-                // Show processed image full screen
+                // Show processed image with zoom and crop support
                 if let Some(texture) = &self.processed_texture {
                     ui.allocate_ui_at_rect(screen_rect, |ui| {
-                        ui.add_sized(screen_rect.size(), egui::Image::new(texture));
+                        // Handle mouse interactions for crop selection
+                        let response = ui.interact(screen_rect, egui::Id::new("image_interaction"), egui::Sense::click_and_drag());
+
+                        if self.crop_mode {
+                            // Handle crop selection
+                            if response.drag_started() {
+                                self.selection_start = Some(response.interact_pointer_pos().unwrap_or_default());
+                                self.crop_rect = None;
+                            } else if response.dragged() {
+                                if let Some(start) = self.selection_start {
+                                    if let Some(current) = response.interact_pointer_pos() {
+                                        let rect = egui::Rect::from_two_pos(start, current);
+                                        self.crop_rect = Some(rect);
+                                    }
+                                }
+                            }
+                        } else {
+                            // Handle panning when zoomed in
+                            if response.dragged() && self.zoom_level > 1.0 {
+                                self.pan_offset += response.drag_delta();
+                            }
+                        }
+
+                        // Handle zoom with mouse wheel
+                        if let Some(scroll) = ui.input(|i| i.scroll_delta.y) {
+                            if scroll > 0.0 && self.zoom_level < 5.0 {
+                                self.zoom_level *= 1.05;
+                            } else if scroll < 0.0 && self.zoom_level > 0.5 {
+                                self.zoom_level /= 1.05;
+                            }
+                        }
+
+                        // Calculate image display parameters
+                        let image_size = texture.size_vec2();
+                        let scaled_size = image_size * self.zoom_level;
+                        let center = screen_rect.center();
+
+                        // Calculate image position with pan offset
+                        let image_rect = egui::Rect::from_center_size(
+                            center + self.pan_offset,
+                            scaled_size
+                        );
+
+                        // Display the zoomed/panned image
+                        let image = egui::Image::new(texture)
+                            .uv(egui::Rect::from_min_max(egui::pos2(0.0, 0.0), egui::pos2(1.0, 1.0)));
+
+                        ui.put(image_rect, image);
+
+                        // Draw crop rectangle overlay
+                        if let Some(crop_rect) = self.crop_rect {
+                            let stroke = egui::Stroke::new(2.0, egui::Color32::RED);
+                            ui.painter().rect_stroke(crop_rect, 0.0, stroke);
+
+                            // Draw semi-transparent overlay outside crop area
+                            let crop_painter = ui.painter();
+                            let outside_color = egui::Color32::from_black_alpha(120);
+
+                            // Top area
+                            if crop_rect.min.y > screen_rect.min.y {
+                                let top_rect = egui::Rect::from_min_max(
+                                    screen_rect.min,
+                                    egui::pos2(screen_rect.max.x, crop_rect.min.y)
+                                );
+                                crop_painter.rect_filled(top_rect, 0.0, outside_color);
+                            }
+
+                            // Bottom area
+                            if crop_rect.max.y < screen_rect.max.y {
+                                let bottom_rect = egui::Rect::from_min_max(
+                                    egui::pos2(screen_rect.min.x, crop_rect.max.y),
+                                    screen_rect.max
+                                );
+                                crop_painter.rect_filled(bottom_rect, 0.0, outside_color);
+                            }
+
+                            // Left area
+                            if crop_rect.min.x > screen_rect.min.x {
+                                let left_rect = egui::Rect::from_min_max(
+                                    egui::pos2(screen_rect.min.x, crop_rect.min.y),
+                                    egui::pos2(crop_rect.min.x, crop_rect.max.y)
+                                );
+                                crop_painter.rect_filled(left_rect, 0.0, outside_color);
+                            }
+
+                            // Right area
+                            if crop_rect.max.x < screen_rect.max.x {
+                                let right_rect = egui::Rect::from_min_max(
+                                    egui::pos2(crop_rect.max.x, crop_rect.min.y),
+                                    egui::pos2(screen_rect.max.x, crop_rect.max.y)
+                                );
+                                crop_painter.rect_filled(right_rect, 0.0, outside_color);
+                            }
+                        }
                     });
                 } else {
                     ui.centered_and_justified(|ui| {
@@ -236,6 +341,37 @@ impl eframe::App for PixelSorterApp {
 
                                 if threshold_changed && !self.is_processing {
                                     self.apply_pixel_sort(ctx);
+                                }
+                            });
+
+                            ui.add_space(10.0);
+
+                            // Crop controls
+                            ui.horizontal(|ui| {
+                                ui.label("Zoom:");
+                                if ui.button("Zoom In").clicked() && self.zoom_level < 5.0 {
+                                    self.zoom_level *= 1.2;
+                                }
+                                if ui.button("Zoom Out").clicked() && self.zoom_level > 0.5 {
+                                    self.zoom_level /= 1.2;
+                                }
+                                ui.label(format!("{:.1}x", self.zoom_level));
+
+                                ui.separator();
+
+                                if ui.button(if self.crop_mode { "Cancel Crop" } else { "Select Crop" }).clicked() {
+                                    self.crop_mode = !self.crop_mode;
+                                    if !self.crop_mode {
+                                        self.crop_rect = None;
+                                        self.selection_start = None;
+                                    }
+                                }
+
+                                if self.crop_mode && self.crop_rect.is_some() {
+                                    ui.separator();
+                                    if ui.button("Apply Crop").clicked() {
+                                        self.apply_crop_and_sort(ctx);
+                                    }
                                 }
                             });
 
@@ -701,6 +837,98 @@ impl PixelSorterApp {
             }
         } else {
             self.status_message = "No processed image to save".to_string();
+        }
+    }
+
+    fn apply_crop_and_sort(&mut self, ctx: &egui::Context) {
+        if let (Some(ref original), Some(crop_rect)) = (&self.original_image, self.crop_rect) {
+            self.is_processing = true;
+            self.status_message = format!("Cropping and applying {} sorting...", self.current_algorithm.name());
+
+            // Get screen and image dimensions for coordinate conversion
+            let screen_rect = ctx.screen_rect();
+            let image_size = original.dimensions();
+
+            // Convert screen coordinates to image coordinates
+            let image_rect = egui::Rect::from_min_max(
+                egui::pos2(0.0, 0.0),
+                egui::pos2(image_size.0 as f32, image_size.1 as f32)
+            );
+
+            // Calculate the transformation from screen to image coordinates
+            let scale_x = image_size.0 as f32 / screen_rect.width();
+            let scale_y = image_size.1 as f32 / screen_rect.height();
+
+            // Adjust for zoom and pan
+            let zoom_center = screen_rect.center();
+            let image_center = image_rect.center();
+
+            // Convert crop rectangle to image coordinates
+            let crop_min_x = ((crop_rect.min.x - zoom_center.x) * scale_x / self.zoom_level + image_center.x - self.pan_offset.x * scale_x / self.zoom_level).max(0.0) as u32;
+            let crop_min_y = ((crop_rect.min.y - zoom_center.y) * scale_y / self.zoom_level + image_center.y - self.pan_offset.y * scale_y / self.zoom_level).max(0.0) as u32;
+            let crop_max_x = ((crop_rect.max.x - zoom_center.x) * scale_x / self.zoom_level + image_center.x - self.pan_offset.x * scale_x / self.zoom_level).min(image_size.0 as f32) as u32;
+            let crop_max_y = ((crop_rect.max.y - zoom_center.y) * scale_y / self.zoom_level + image_center.y - self.pan_offset.y * scale_y / self.zoom_level).min(image_size.1 as f32) as u32;
+
+            // Ensure valid crop dimensions
+            let crop_width = crop_max_x.saturating_sub(crop_min_x);
+            let crop_height = crop_max_y.saturating_sub(crop_min_y);
+
+            if crop_width > 0 && crop_height > 0 {
+                // Create cropped image
+                let mut cropped = image::RgbImage::new(crop_width, crop_height);
+
+                for y in 0..crop_height {
+                    for x in 0..crop_width {
+                        let src_x = crop_min_x + x;
+                        let src_y = crop_min_y + y;
+                        if src_x < image_size.0 && src_y < image_size.1 {
+                            let pixel = original.get_pixel(src_x, src_y);
+                            cropped.put_pixel(x, y, *pixel);
+                        }
+                    }
+                }
+
+                // Apply pixel sorting to the cropped region
+                let algorithm = self.current_algorithm;
+                let params = self.sorting_params.clone();
+                let pixel_sorter = Arc::clone(&self.pixel_sorter);
+
+                match pixel_sorter.sort_pixels(&cropped, algorithm, &params) {
+                    Ok(sorted_cropped) => {
+                        // Create a new image with the sorted crop placed back in the original position
+                        let mut result = original.clone();
+
+                        for y in 0..crop_height {
+                            for x in 0..crop_width {
+                                let pixel = sorted_cropped.get_pixel(x, y);
+                                result.put_pixel(crop_min_x + x, crop_min_y + y, *pixel);
+                            }
+                        }
+
+                        self.processed_image = Some(result.clone());
+                        self.create_processed_texture(ctx, result);
+
+                        // Exit crop mode and reset zoom/pan
+                        self.crop_mode = false;
+                        self.crop_rect = None;
+                        self.selection_start = None;
+                        self.zoom_level = 1.0;
+                        self.pan_offset = egui::Vec2::ZERO;
+
+                        self.is_processing = false;
+                        self.status_message = "Crop processed successfully!".to_string();
+                    }
+                    Err(e) => {
+                        self.is_processing = false;
+                        self.status_message = format!("Processing failed: {}", e);
+                    }
+                }
+            } else {
+                self.is_processing = false;
+                self.status_message = "Invalid crop selection".to_string();
+            }
+        } else {
+            self.status_message = "No image or crop selection available".to_string();
         }
     }
 }
