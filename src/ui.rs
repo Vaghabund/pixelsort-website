@@ -36,9 +36,7 @@ pub struct PixelSorterApp {
     pub last_camera_update: Option<Instant>,
     // Crop functionality
     pub crop_mode: bool,
-    pub zoom_level: f32,
     pub crop_rect: Option<egui::Rect>,
-    pub pan_offset: egui::Vec2,
     pub selection_start: Option<egui::Pos2>,
     pub exit_requested: bool,
 }
@@ -82,9 +80,7 @@ impl PixelSorterApp {
             last_camera_update: None,
             // Crop functionality
             crop_mode: false,
-            zoom_level: 1.0,
             crop_rect: None,
-            pan_offset: egui::Vec2::ZERO,
             selection_start: None,
             exit_requested: false,
         }
@@ -178,38 +174,11 @@ impl eframe::App for PixelSorterApp {
                                 }
                             }
                         } else {
-                            // Handle panning when zoomed in
-                            if response.dragged() && self.zoom_level > 1.0 {
-                                self.pan_offset += response.drag_delta();
-                            }
+                            // No panning needed without zoom
                         }
 
-                        // Handle zoom with mouse wheel
-                        let scroll_delta = ui.input(|i| i.scroll_delta);
-                        if scroll_delta.y != 0.0 {
-                            if scroll_delta.y > 0.0 && self.zoom_level < 5.0 {
-                                self.zoom_level *= 1.05;
-                            } else if scroll_delta.y < 0.0 && self.zoom_level > 0.5 {
-                                self.zoom_level /= 1.05;
-                            }
-                        }
-
-                        // Calculate image display parameters
-                        let image_size = texture.size_vec2();
-                        let scaled_size = image_size * self.zoom_level;
-                        let center = screen_rect.center();
-
-                        // Calculate image position with pan offset
-                        let image_rect = egui::Rect::from_center_size(
-                            center + self.pan_offset,
-                            scaled_size
-                        );
-
-                        // Display the zoomed/panned image
-                        let image = egui::Image::new(texture)
-                            .uv(egui::Rect::from_min_max(egui::pos2(0.0, 0.0), egui::pos2(1.0, 1.0)));
-
-                        ui.put(image_rect, image);
+                        // Display the image filling the entire screen
+                        ui.add_sized(screen_rect.size(), egui::Image::new(texture));
 
                         // Draw crop rectangle overlay
                         if let Some(crop_rect) = self.crop_rect {
@@ -356,17 +325,6 @@ impl eframe::App for PixelSorterApp {
 
                             // Crop controls
                             ui.horizontal(|ui| {
-                                ui.label("Zoom:");
-                                if ui.button("Zoom In").clicked() && self.zoom_level < 5.0 {
-                                    self.zoom_level *= 1.2;
-                                }
-                                if ui.button("Zoom Out").clicked() && self.zoom_level > 0.5 {
-                                    self.zoom_level /= 1.2;
-                                }
-                                ui.label(format!("{:.1}x", self.zoom_level));
-
-                                ui.separator();
-
                                 if ui.button(if self.crop_mode { "Cancel Crop" } else { "Select Crop" }).clicked() {
                                     self.crop_mode = !self.crop_mode;
                                     if !self.crop_mode {
@@ -859,25 +817,15 @@ impl PixelSorterApp {
             let screen_rect = ctx.screen_rect();
             let image_size = original.dimensions();
 
-            // Convert screen coordinates to image coordinates
-            let image_rect = egui::Rect::from_min_max(
-                egui::pos2(0.0, 0.0),
-                egui::pos2(image_size.0 as f32, image_size.1 as f32)
-            );
-
-            // Calculate the transformation from screen to image coordinates
+            // Calculate scaling factors (image fills screen)
             let scale_x = image_size.0 as f32 / screen_rect.width();
             let scale_y = image_size.1 as f32 / screen_rect.height();
 
-            // Adjust for zoom and pan
-            let zoom_center = screen_rect.center();
-            let image_center = image_rect.center();
-
-            // Convert crop rectangle to image coordinates
-            let crop_min_x = ((crop_rect.min.x - zoom_center.x) * scale_x / self.zoom_level + image_center.x - self.pan_offset.x * scale_x / self.zoom_level).max(0.0) as u32;
-            let crop_min_y = ((crop_rect.min.y - zoom_center.y) * scale_y / self.zoom_level + image_center.y - self.pan_offset.y * scale_y / self.zoom_level).max(0.0) as u32;
-            let crop_max_x = ((crop_rect.max.x - zoom_center.x) * scale_x / self.zoom_level + image_center.x - self.pan_offset.x * scale_x / self.zoom_level).min(image_size.0 as f32) as u32;
-            let crop_max_y = ((crop_rect.max.y - zoom_center.y) * scale_y / self.zoom_level + image_center.y - self.pan_offset.y * scale_y / self.zoom_level).min(image_size.1 as f32) as u32;
+            // Convert crop rectangle screen coordinates to image coordinates
+            let crop_min_x = (crop_rect.min.x * scale_x).max(0.0).min(image_size.0 as f32) as u32;
+            let crop_min_y = (crop_rect.min.y * scale_y).max(0.0).min(image_size.1 as f32) as u32;
+            let crop_max_x = (crop_rect.max.x * scale_x).max(0.0).min(image_size.0 as f32) as u32;
+            let crop_max_y = (crop_rect.max.y * scale_y).max(0.0).min(image_size.1 as f32) as u32;
 
             // Ensure valid crop dimensions
             let crop_width = crop_max_x.saturating_sub(crop_min_x);
@@ -910,12 +858,10 @@ impl PixelSorterApp {
                         self.processed_image = Some(sorted_cropped.clone());
                         self.create_processed_texture(ctx, sorted_cropped);
 
-                        // Exit crop mode and reset zoom/pan
+                        // Exit crop mode
                         self.crop_mode = false;
                         self.crop_rect = None;
                         self.selection_start = None;
-                        self.zoom_level = 1.0;
-                        self.pan_offset = egui::Vec2::ZERO;
 
                         self.is_processing = false;
                         self.status_message = "Crop processed successfully!".to_string();
