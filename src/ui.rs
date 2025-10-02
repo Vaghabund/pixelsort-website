@@ -178,10 +178,11 @@ impl eframe::App for PixelSorterApp {
                         }
 
                         // Handle zoom with mouse wheel
-                        if let Some(scroll) = ui.input(|i| i.scroll_delta.y) {
-                            if scroll > 0.0 && self.zoom_level < 5.0 {
+                        let scroll_delta = ui.input(|i| i.scroll_delta);
+                        if scroll_delta.y != 0.0 {
+                            if scroll_delta.y > 0.0 && self.zoom_level < 5.0 {
                                 self.zoom_level *= 1.05;
-                            } else if scroll < 0.0 && self.zoom_level > 0.5 {
+                            } else if scroll_delta.y < 0.0 && self.zoom_level > 0.5 {
                                 self.zoom_level /= 1.05;
                             }
                         }
