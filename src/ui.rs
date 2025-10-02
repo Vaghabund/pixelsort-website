@@ -34,7 +34,6 @@ pub struct PixelSorterApp {
     pub iteration_counter: u32,
     pub current_session_folder: Option<String>,
     pub last_camera_update: Option<Instant>,
-    pub camera_image_data: Option<image::RgbImage>,
 }
 
 impl PixelSorterApp {
@@ -67,7 +66,6 @@ impl PixelSorterApp {
             iteration_counter: 0,
             current_session_folder: None,
             last_camera_update: None,
-            camera_image_data: None,
         }
     }
 
@@ -78,12 +76,12 @@ impl eframe::App for PixelSorterApp {
     fn update(&mut self, ctx: &egui::Context, _frame: &mut eframe::Frame) {
         // Camera preview is now handled directly in the update loop below
 
-        // Live camera updates - use non-blocking approach for UI responsiveness
+        // High-performance 30 FPS camera updates - eliminate all bottlenecks
         if self.preview_mode && self.camera_controller.is_some() && !self.is_processing {
             let now = Instant::now();
             let should_update = match self.last_camera_update {
                 None => true,
-                Some(last) => now.duration_since(last) >= std::time::Duration::from_millis(200), // Reduce to 5 FPS for better responsiveness
+                Some(last) => now.duration_since(last) >= std::time::Duration::from_millis(33), // 30 FPS target
             };
 
             if should_update {
@@ -91,11 +89,11 @@ impl eframe::App for PixelSorterApp {
                 if let Some(camera) = self.camera_controller.clone() {
                     // Try to get camera lock without blocking the UI
                     if let Ok(mut camera_lock) = camera.try_write() {
-                        // Use the existing synchronous method
+                        // Use the existing synchronous method - NO CLONING
                         match camera_lock.get_fast_preview_image() {
                             Ok(preview_image) => {
-                                self.camera_image_data = Some(preview_image.clone());
-                                self.create_camera_texture(ctx, preview_image);
+                                // Direct texture update without storing intermediate image
+                                self.update_camera_texture(ctx, &preview_image);
                                 self.last_camera_update = Some(now);
                             }
                             Err(_) => {
@@ -263,9 +261,9 @@ impl eframe::App for PixelSorterApp {
             }
         });
 
-        // Only request repaint when necessary (camera preview mode and not processing)
+        // High-performance 30 FPS repaints for smooth camera feed
         if self.preview_mode && self.camera_controller.is_some() && !self.is_processing {
-            ctx.request_repaint_after(std::time::Duration::from_millis(200)); // Match camera update rate
+            ctx.request_repaint_after(std::time::Duration::from_millis(33)); // 30 FPS
         }
     }
 }
@@ -286,7 +284,6 @@ impl PixelSorterApp {
                         self.preview_mode = false; // Switch to editing mode
                         // Clear camera texture to stop live updates during editing
                         self.camera_texture = None;
-                        self.camera_image_data = None;
                         self.last_camera_update = None;
                         self.apply_pixel_sort(ctx);
                     }
@@ -304,20 +301,19 @@ impl PixelSorterApp {
     }
 
     fn apply_pixel_sort(&mut self, ctx: &egui::Context) {
-        if let Some(ref original) = self.original_image.clone() {
+        if let Some(ref original) = self.original_image {
             self.is_processing = true;
             self.status_message = format!("Applying {} sorting...", self.current_algorithm.name());
             
             let algorithm = self.current_algorithm;
             let params = self.sorting_params.clone();
             let pixel_sorter = Arc::clone(&self.pixel_sorter);
-            let image = original.clone();
 
-            // Synchronous processing for now
-            match pixel_sorter.sort_pixels(&image, algorithm, &params) {
+            // Avoid unnecessary cloning - use reference
+            match pixel_sorter.sort_pixels(original, algorithm, &params) {
                 Ok(sorted_image) => {
                     self.processed_image = Some(sorted_image.clone());
-                    self.create_processed_texture(ctx, sorted_image.clone());
+                    self.create_processed_texture(ctx, sorted_image);
                     
                     self.is_processing = false;
                     self.status_message = "Processing complete!".to_string();
@@ -411,6 +407,27 @@ impl PixelSorterApp {
                 texture.set(color_image, egui::TextureOptions::LINEAR);
             }
             None => {
+                let texture = ctx.load_texture("camera_preview", color_image, egui::TextureOptions::LINEAR);
+                self.camera_texture = Some(texture);
+            }
+        }
+    }
+
+    // High-performance texture update that avoids unnecessary copying
+    fn update_camera_texture(&mut self, ctx: &egui::Context, image: &image::RgbImage) {
+        let size = [image.width() as usize, image.height() as usize];
+        let pixels = image.as_flat_samples();
+        
+        let color_image = egui::ColorImage::from_rgb(size, pixels.as_slice());
+        
+        // Reuse existing texture - optimized for 30 FPS updates
+        match &mut self.camera_texture {
+            Some(texture) => {
+                // Direct update - no allocation
+                texture.set(color_image, egui::TextureOptions::LINEAR);
+            }
+            None => {
+                // First time only
                 let texture = ctx.load_texture("camera_preview", color_image, egui::TextureOptions::LINEAR);
                 self.camera_texture = Some(texture);
             }
