@@ -178,75 +178,99 @@ impl eframe::App for PixelSorterApp {
                 });
             });
 
-        // Bottom overlay with main controls
+        // Bottom overlay with context-sensitive controls
         let screen_rect = ctx.screen_rect();
         egui::Area::new("bottom_controls")
             .fixed_pos(egui::pos2(10.0, screen_rect.height() - 150.0))
             .show(ctx, |ui| {
                 ui.visuals_mut().window_fill = egui::Color32::from_black_alpha(180);
                 egui::Frame::window(&ui.style()).show(ui, |ui| {
-                    ui.vertical(|ui| {
-                        // Main action buttons
-                        ui.horizontal(|ui| {
-                            if self.preview_mode {
-                                let capture_button = egui::Button::new("Capture & Sort").min_size([120.0, 40.0].into());
+                    if self.preview_mode {
+                        // Camera Live View Layout
+                        ui.vertical(|ui| {
+                            ui.horizontal(|ui| {
+                                // Take Picture button
+                                let capture_button = egui::Button::new("Take Picture").min_size([140.0, 40.0].into());
                                 if ui.add_enabled(!self.is_processing, capture_button).clicked() {
                                     self.capture_and_sort(ctx);
                                 }
-                                
 
-                            } else {
-                                if ui.button("New Photo").clicked() {
-                                    self.start_new_photo_session();
+                                ui.separator();
+
+                                // Load Image button
+                                if ui.button("Load Image").clicked() {
+                                    self.load_image(ctx);
                                 }
-                                
+
+                                ui.separator();
+
+                                // Exit button
+                                if ui.button("Exit").clicked() {
+                                    std::process::exit(0);
+                                }
+                            });
+                        });
+                    } else {
+                        // Image Editing Layout
+                        ui.vertical(|ui| {
+                            // Algorithm and parameters
+                            ui.horizontal(|ui| {
+                                ui.label("Algorithm:");
+                                egui::ComboBox::from_label("")
+                                    .selected_text(self.current_algorithm.name())
+                                    .show_ui(ui, |ui| {
+                                        for &algorithm in SortingAlgorithm::all() {
+                                            if ui.selectable_value(&mut self.current_algorithm, algorithm, algorithm.name()).clicked() {
+                                                self.apply_pixel_sort(ctx);
+                                            }
+                                        }
+                                    });
+
+                                ui.add_space(15.0);
+                                ui.label(format!("Threshold: {:.0}", self.sorting_params.threshold));
+                                let threshold_changed = ui.add(
+                                    egui::Slider::new(&mut self.sorting_params.threshold, 0.0..=255.0)
+                                        .step_by(1.0)
+                                        .show_value(false)
+                                ).changed();
+
+                                if threshold_changed && !self.is_processing {
+                                    self.apply_pixel_sort(ctx);
+                                }
+                            });
+
+                            ui.add_space(10.0);
+
+                            // Action buttons
+                            ui.horizontal(|ui| {
+                                // Save & Continue button
                                 if ui.button("Save & Continue").clicked() {
                                     self.save_and_continue_iteration(ctx);
                                 }
-                            }
-                            
-                            if ui.button("Load Image").clicked() {
-                                self.load_image(ctx);
-                            }
-                            
-                            if ui.button("Save to USB").clicked() {
-                                match self.copy_to_usb() {
-                                    Ok(()) => {
-                                        self.status_message = "Successfully copied to USB!".to_string();
-                                    }
-                                    Err(e) => {
-                                        self.status_message = format!("USB copy failed: {}", e);
-                                    }
-                                }
-                            }
-                        });
-                        
-                        ui.add_space(10.0);
-                        
-                        // Algorithm and parameters
-                        ui.horizontal(|ui| {
-                            ui.label("Algorithm:");
-                            for &algorithm in SortingAlgorithm::all() {
-                                if ui.radio_value(&mut self.current_algorithm, algorithm, algorithm.name()).clicked() {
-                                    if !self.preview_mode {
-                                        self.apply_pixel_sort(ctx);
-                                    }
-                                }
-                            }
-                            
-                            ui.add_space(10.0);
-                            ui.label(format!("Threshold: {:.0}", self.sorting_params.threshold));
-                            let threshold_changed = ui.add(
-                                egui::Slider::new(&mut self.sorting_params.threshold, 0.0..=255.0)
-                                    .step_by(1.0)
-                                    .show_value(false)
-                            ).changed();
 
-                            if threshold_changed && !self.is_processing && !self.preview_mode {
-                                self.apply_pixel_sort(ctx);
-                            }
+                                ui.separator();
+
+                                // Back to Camera button
+                                if ui.button("Back to Camera").clicked() {
+                                    self.start_new_photo_session();
+                                }
+
+                                ui.separator();
+
+                                // Export to USB button
+                                if ui.button("Export to USB").clicked() {
+                                    match self.copy_to_usb() {
+                                        Ok(()) => {
+                                            self.status_message = "Successfully copied to USB!".to_string();
+                                        }
+                                        Err(e) => {
+                                            self.status_message = format!("USB copy failed: {}", e);
+                                        }
+                                    }
+                                }
+                            });
                         });
-                    });
+                    }
                 });
             });
 
