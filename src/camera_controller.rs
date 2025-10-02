@@ -204,25 +204,6 @@ impl CameraController {
 
         log::info!("Camera streaming stopped");
     }
-        if !self.is_available {
-            return Err(anyhow!("Camera not available"));
-        }
-
-        // Clean up any existing process
-        self.stop_preview();
-
-        // We'll use on-demand preview capture with timing control
-        // This avoids the X11 preview window crashes we saw in testing
-        Ok(())
-    }
-
-    /// Stop live preview
-    pub fn stop_preview(&mut self) {
-        if let Some(mut process) = self.preview_process.take() {
-            let _ = process.kill();
-            let _ = process.wait();
-        }
-    }
 
     /// Get fast live preview image from streaming camera
     pub fn get_fast_preview_image(&mut self) -> Result<RgbImage> {
