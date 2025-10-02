@@ -467,13 +467,13 @@ impl PixelSorterApp {
         if let Some(ref original) = self.original_image.clone() {
             self.is_processing = true;
             self.status_message = format!("Applying {} sorting...", self.current_algorithm.name());
-            
+
             let algorithm = self.current_algorithm;
             let params = self.sorting_params.clone();
             let pixel_sorter = Arc::clone(&self.pixel_sorter);
             let image = original.clone();
 
-            // Synchronous processing for now
+            // Synchronous processing - consider making async in future
             match pixel_sorter.sort_pixels(&image, algorithm, &params) {
                 Ok(sorted_image) => {
                     self.processed_image = Some(sorted_image.clone());
