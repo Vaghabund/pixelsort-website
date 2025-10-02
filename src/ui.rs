@@ -87,7 +87,8 @@ impl eframe::App for PixelSorterApp {
             };
 
             if should_update {
-                if let Some(ref camera) = self.camera_controller {
+                // Clone the camera controller reference to avoid borrow conflicts
+                if let Some(camera) = self.camera_controller.clone() {
                     // Try to get camera lock without blocking the UI
                     if let Ok(mut camera_lock) = camera.try_write() {
                         // Use the existing synchronous method
@@ -272,12 +273,13 @@ impl eframe::App for PixelSorterApp {
 impl PixelSorterApp {
     // New methods for the redesigned workflow
     fn capture_and_sort(&mut self, ctx: &egui::Context) {
-        if let Some(ref camera) = self.camera_controller {
+        // Clone the camera controller reference to avoid borrow conflicts
+        if let Some(camera) = self.camera_controller.clone() {
             self.is_processing = true;
             self.status_message = "Capturing image...".to_string();
             
             // Use non-blocking approach
-            if let Ok(mut camera_lock) = camera.try_write() {
+            if let Ok(camera_lock) = camera.try_write() {
                 match camera_lock.capture_snapshot() {
                     Ok(captured_image) => {
                         self.original_image = Some(captured_image);
