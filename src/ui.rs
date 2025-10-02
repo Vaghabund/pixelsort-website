@@ -78,33 +78,31 @@ impl eframe::App for PixelSorterApp {
     fn update(&mut self, ctx: &egui::Context, _frame: &mut eframe::Frame) {
         // Camera preview is now handled directly in the update loop below
 
-        // Live camera updates with all stability fixes applied - only when in preview mode and not processing
+        // Live camera updates - use non-blocking approach for UI responsiveness
         if self.preview_mode && self.camera_controller.is_some() && !self.is_processing {
             let now = Instant::now();
             let should_update = match self.last_camera_update {
                 None => true,
-                Some(last) => now.duration_since(last) >= std::time::Duration::from_millis(100), // 10 FPS - smooth but not laggy
+                Some(last) => now.duration_since(last) >= std::time::Duration::from_millis(200), // Reduce to 5 FPS for better responsiveness
             };
 
             if should_update {
                 if let Some(ref camera) = self.camera_controller {
-                    let preview_result = tokio::task::block_in_place(|| {
-                        tokio::runtime::Handle::current().block_on(async {
-                            let mut camera_lock = camera.write().await;
-                            camera_lock.get_fast_preview_image() // Use fast method for live preview
-                        })
-                    });
-
-                    match preview_result {
-                        Ok(preview_image) => {
-                            self.camera_image_data = Some(preview_image.clone());
-                            self.create_camera_texture(ctx, preview_image);
-                            self.last_camera_update = Some(now);
-                        }
-                        Err(_) => {
-                            // Silently ignore preview errors for better performance
+                    // Try to get camera lock without blocking the UI
+                    if let Ok(mut camera_lock) = camera.try_write() {
+                        // Use the existing synchronous method
+                        match camera_lock.get_fast_preview_image() {
+                            Ok(preview_image) => {
+                                self.camera_image_data = Some(preview_image.clone());
+                                self.create_camera_texture(ctx, preview_image);
+                                self.last_camera_update = Some(now);
+                            }
+                            Err(_) => {
+                                // Skip this frame if camera is busy
+                            }
                         }
                     }
+                    // If camera is locked, skip this frame - don't block UI
                 }
             }
         }
@@ -264,14 +262,9 @@ impl eframe::App for PixelSorterApp {
             }
         });
 
-        // Request continuous repaints when in camera preview mode for live feed
-        if self.preview_mode && self.camera_controller.is_some() {
-            ctx.request_repaint();
-        }
-
-        // Only request continuous repaints when in preview mode
-        if self.preview_mode && self.camera_controller.is_some() {
-            ctx.request_repaint();
+        // Only request repaint when necessary (camera preview mode and not processing)
+        if self.preview_mode && self.camera_controller.is_some() && !self.is_processing {
+            ctx.request_repaint_after(std::time::Duration::from_millis(200)); // Match camera update rate
         }
     }
 }
@@ -283,27 +276,27 @@ impl PixelSorterApp {
             self.is_processing = true;
             self.status_message = "Capturing image...".to_string();
             
-            let capture_result = tokio::task::block_in_place(|| {
-                tokio::runtime::Handle::current().block_on(async {
-                    let camera_lock = camera.write().await;
-                    camera_lock.capture_snapshot()
-                })
-            });
-
-            match capture_result {
-                Ok(captured_image) => {
-                    self.original_image = Some(captured_image);
-                    self.preview_mode = false; // Switch to editing mode
-                    // Clear camera texture to stop live updates during editing
-                    self.camera_texture = None;
-                    self.camera_image_data = None;
-                    self.last_camera_update = None;
-                    self.apply_pixel_sort(ctx);
+            // Use non-blocking approach
+            if let Ok(mut camera_lock) = camera.try_write() {
+                match camera_lock.capture_snapshot() {
+                    Ok(captured_image) => {
+                        self.original_image = Some(captured_image);
+                        self.preview_mode = false; // Switch to editing mode
+                        // Clear camera texture to stop live updates during editing
+                        self.camera_texture = None;
+                        self.camera_image_data = None;
+                        self.last_camera_update = None;
+                        self.apply_pixel_sort(ctx);
+                    }
+                    Err(e) => {
+                        self.is_processing = false;
+                        self.status_message = format!("Capture failed: {}", e);
+                    }
                 }
-                Err(e) => {
-                    self.is_processing = false;
-                    self.status_message = format!("Capture failed: {}", e);
-                }
+            } else {
+                // Camera is busy, try again later
+                self.is_processing = false;
+                self.status_message = "Camera busy, please try again".to_string();
             }
         }
     }
@@ -408,10 +401,18 @@ impl PixelSorterApp {
         let pixels = image.as_flat_samples();
         
         let color_image = egui::ColorImage::from_rgb(size, pixels.as_slice());
-        let texture_name = format!("camera_preview_{}", std::time::SystemTime::now().duration_since(std::time::UNIX_EPOCH).unwrap_or_default().as_millis());
         
-        let texture = ctx.load_texture(texture_name, color_image, egui::TextureOptions::LINEAR);
-        self.camera_texture = Some(texture);
+        // Reuse existing texture if available to reduce memory allocations
+        match &mut self.camera_texture {
+            Some(texture) => {
+                // Update existing texture instead of creating new one
+                texture.set(color_image, egui::TextureOptions::LINEAR);
+            }
+            None => {
+                let texture = ctx.load_texture("camera_preview", color_image, egui::TextureOptions::LINEAR);
+                self.camera_texture = Some(texture);
+            }
+        }
     }
 
     fn create_processed_texture(&mut self, ctx: &egui::Context, image: image::RgbImage) {
@@ -419,10 +420,18 @@ impl PixelSorterApp {
         let pixels = image.as_flat_samples();
         
         let color_image = egui::ColorImage::from_rgb(size, pixels.as_slice());
-        let texture_name = format!("processed_image_{}", std::time::SystemTime::now().duration_since(std::time::UNIX_EPOCH).unwrap_or_default().as_millis());
         
-        let texture = ctx.load_texture(texture_name, color_image, egui::TextureOptions::LINEAR);
-        self.processed_texture = Some(texture);
+        // Reuse existing texture if available to reduce memory allocations
+        match &mut self.processed_texture {
+            Some(texture) => {
+                // Update existing texture instead of creating new one
+                texture.set(color_image, egui::TextureOptions::LINEAR);
+            }
+            None => {
+                let texture = ctx.load_texture("processed_image", color_image, egui::TextureOptions::LINEAR);
+                self.processed_texture = Some(texture);
+            }
+        }
     }
 
     fn on_button_press(&mut self, button: u8, ctx: &egui::Context) {
