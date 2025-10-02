@@ -337,6 +337,13 @@ impl eframe::App for PixelSorterApp {
 
                             // Action buttons
                             ui.horizontal(|ui| {
+                                // Process Image button
+                                if ui.button("Process Image").clicked() && !self.is_processing {
+                                    self.process_image(ctx);
+                                }
+
+                                ui.separator();
+
                                 // Save & Continue button
                                 if ui.button("Save & Continue").clicked() {
                                     self.save_and_continue_iteration(ctx);
@@ -485,17 +492,28 @@ impl PixelSorterApp {
     fn load_image(&mut self, ctx: &egui::Context) {
         if let Some(path) = rfd::FileDialog::new()
             .add_filter("images", &["png", "jpg", "jpeg", "gif", "bmp", "ico", "tiff", "webp", "pnm", "dds", "tga"])
-            .pick_file() 
+            .pick_file()
         {
+            self.is_processing = true;
+            self.status_message = "Loading image...".to_string();
+
             match image::open(&path) {
                 Ok(img) => {
                     let rgb_image = img.to_rgb8();
-                    self.original_image = Some(rgb_image.clone());
+                    self.original_image = Some(rgb_image);
+                    self.processed_image = None; // Clear any previous processed image
                     self.preview_mode = false; // Switch to editing mode when loading image
-                    self.process_image(ctx);
+
+                    // Create texture for the loaded image
+                    if let Some(ref original) = self.original_image {
+                        self.create_processed_texture(ctx, original.clone());
+                    }
+
+                    self.is_processing = false;
                     self.status_message = format!("Loaded: {}", path.display());
                 }
                 Err(e) => {
+                    self.is_processing = false;
                     self.status_message = format!("Failed to load image: {}", e);
                 }
             }
