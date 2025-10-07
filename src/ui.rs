@@ -201,8 +201,15 @@ impl eframe::App for PixelSorterApp {
                             // No panning needed without zoom
                         }
 
-                        // Display the image filling the entire screen
-                        ui.add_sized(screen_rect.size(), egui::Image::new(&texture));
+                        // Display the image filling the entire screen (force stretch to rect)
+                        // Use painter.image with UV [0,0]-[1,1] to ensure the texture is stretched
+                        // to the full screen rect, which zooms small cropped images to fill the area.
+                        ui.painter().image(
+                            texture.id(),
+                            screen_rect, // destination rect
+                            egui::Rect::from_min_max(egui::pos2(0.0, 0.0), egui::pos2(1.0, 1.0)), // full uv
+                            egui::Color32::WHITE,
+                        );
 
                         // Draw crop rectangle overlay
                         if let Some(crop_rect) = self.crop_rect {
