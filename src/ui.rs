@@ -408,6 +408,13 @@ impl eframe::App for PixelSorterApp {
 
                                 ui.separator();
 
+                                // Save As button - user can choose a location to save the processed image
+                                if ui.button("Save As...").clicked() {
+                                    self.save_image();
+                                }
+
+                                ui.separator();
+
                                 // Back to Camera button
                                 if ui.button("Back to Camera").clicked() {
                                     self.start_new_photo_session();
