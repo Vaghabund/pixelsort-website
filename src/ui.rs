@@ -179,7 +179,7 @@ impl eframe::App for PixelSorterApp {
                 }
             } else {
                 // Show processed image with zoom and crop support
-                if let Some(texture) = &self.processed_texture {
+                if let Some(texture) = self.processed_texture.clone() {
                     ui.allocate_ui_at_rect(screen_rect, |ui| {
                         // Handle mouse interactions for crop selection
                         let response = ui.interact(screen_rect, egui::Id::new("image_interaction"), egui::Sense::click_and_drag());
@@ -202,7 +202,7 @@ impl eframe::App for PixelSorterApp {
                         }
 
                         // Display the image filling the entire screen
-                        ui.add_sized(screen_rect.size(), egui::Image::new(texture));
+                        ui.add_sized(screen_rect.size(), egui::Image::new(&texture));
 
                         // Draw crop rectangle overlay
                         if let Some(crop_rect) = self.crop_rect {
