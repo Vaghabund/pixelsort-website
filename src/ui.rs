@@ -497,7 +497,7 @@ impl PixelSorterApp {
             match pixel_sorter.sort_pixels(original, algorithm, &params) {
                 Ok(sorted_image) => {
                     self.processed_image = Some(sorted_image.clone());
-                    self.create_processed_texture(ctx, sorted_image);
+                    self.create_processed_texture(ctx, sorted_image, egui::TextureOptions::LINEAR);
                     
                     self.is_processing = false;
                     self.status_message = "Processing complete!".to_string();
@@ -525,7 +525,7 @@ impl PixelSorterApp {
             match pixel_sorter.sort_pixels(&image, algorithm, &params) {
                 Ok(sorted_image) => {
                     self.processed_image = Some(sorted_image.clone());
-                    self.create_processed_texture(ctx, sorted_image);
+                    self.create_processed_texture(ctx, sorted_image, egui::TextureOptions::LINEAR);
                     self.is_processing = false;
                     self.status_message = "Processing complete!".to_string();
                 }
@@ -553,9 +553,9 @@ impl PixelSorterApp {
                     self.preview_mode = false; // Switch to editing mode when loading image
 
                     // Create texture for the loaded image
-                    if let Some(ref original) = self.original_image {
-                        self.create_processed_texture(ctx, original.clone());
-                    }
+                        if let Some(ref original) = self.original_image {
+                            self.create_processed_texture(ctx, original.clone(), egui::TextureOptions::LINEAR);
+                        }
 
                     self.is_processing = false;
                     self.status_message = format!("Loaded: {}", path.display());
@@ -610,7 +610,7 @@ impl PixelSorterApp {
         }
     }
 
-    fn create_processed_texture(&mut self, ctx: &egui::Context, image: image::RgbImage) {
+    fn create_processed_texture(&mut self, ctx: &egui::Context, image: image::RgbImage, filter: egui::TextureOptions) {
         let size = [image.width() as usize, image.height() as usize];
         let pixels = image.as_flat_samples();
         
@@ -620,10 +620,10 @@ impl PixelSorterApp {
         match &mut self.processed_texture {
             Some(texture) => {
                 // Update existing texture instead of creating new one
-                texture.set(color_image, egui::TextureOptions::LINEAR);
+                texture.set(color_image, filter);
             }
             None => {
-                let texture = ctx.load_texture("processed_image", color_image, egui::TextureOptions::LINEAR);
+                let texture = ctx.load_texture("processed_image", color_image, filter);
                 self.processed_texture = Some(texture);
             }
         }
@@ -842,7 +842,8 @@ impl PixelSorterApp {
                         // Make the sorted cropped region the new full image
                         self.original_image = Some(sorted_cropped.clone());
                         self.processed_image = Some(sorted_cropped.clone());
-                        self.create_processed_texture(ctx, sorted_cropped);
+                        // Use nearest filtering for cropped images so the upscaled look is crisp
+                        self.create_processed_texture(ctx, sorted_cropped, egui::TextureOptions::NEAREST);
 
                         // Exit crop mode
                         self.crop_mode = false;
