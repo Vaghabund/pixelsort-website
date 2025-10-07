@@ -5,14 +5,14 @@ use std::sync::Arc;
 use tokio::sync::RwLock;
 
 mod config;
-mod gpio_controller;
+
 mod image_processor;
 mod pixel_sorter;
 mod ui;
 mod camera_controller;
 
 use crate::config::Config;
-use crate::gpio_controller::GpioController;
+
 use crate::image_processor::ImageProcessor;
 use crate::pixel_sorter::PixelSorter;
 use crate::ui::PixelSorterApp;
@@ -35,17 +35,7 @@ async fn main() -> Result<()> {
     let pixel_sorter = Arc::new(PixelSorter::new());
     let image_processor = Arc::new(RwLock::new(ImageProcessor::new()));
     
-    // Initialize GPIO controller
-    let gpio_controller = match GpioController::new().await {
-        Ok(controller) => {
-            info!("GPIO controller initialized successfully");
-            Some(Arc::new(RwLock::new(controller)))
-        }
-        Err(e) => {
-            log::warn!("GPIO initialization failed: {}. Running in simulation mode.", e);
-            None
-        }
-    };
+
 
     // Initialize Camera controller  
     let camera_controller = match CameraController::new() {
@@ -84,7 +74,6 @@ async fn main() -> Result<()> {
             Box::new(PixelSorterApp::new(
                 pixel_sorter,
                 image_processor,
-                gpio_controller,
                 camera_controller,
                 config,
             ))

@@ -9,9 +9,41 @@ use chrono::{DateTime, Local};
 
 use crate::pixel_sorter::{PixelSorter, SortingAlgorithm, SortingParameters};
 use crate::camera_controller::CameraController;
-use crate::gpio_controller::GpioController;
 use crate::image_processor::ImageProcessor;
 use crate::config::Config;
+
+#[derive(Debug, Clone, Copy, PartialEq)]
+pub enum CropAspectRatio {
+    Square,     // 1:1
+    Portrait,   // 3:4
+    Landscape,  // 16:9
+}
+
+impl CropAspectRatio {
+    pub fn all() -> &'static [CropAspectRatio] {
+        &[
+            CropAspectRatio::Square,
+            CropAspectRatio::Portrait,
+            CropAspectRatio::Landscape,
+        ]
+    }
+
+    pub fn name(&self) -> &'static str {
+        match self {
+            CropAspectRatio::Square => "1:1",
+            CropAspectRatio::Portrait => "3:4",
+            CropAspectRatio::Landscape => "16:9",
+        }
+    }
+
+    pub fn ratio(&self) -> f32 {
+        match self {
+            CropAspectRatio::Square => 1.0,
+            CropAspectRatio::Portrait => 3.0 / 4.0,
+            CropAspectRatio::Landscape => 16.0 / 9.0,
+        }
+    }
+}
 
 pub struct PixelSorterApp {
     pub original_image: Option<image::RgbImage>,
@@ -25,7 +57,6 @@ pub struct PixelSorterApp {
     pub status_message: String,
     pub camera_controller: Option<Arc<RwLock<CameraController>>>,
     #[allow(dead_code)]
-    pub gpio_controller: Option<Arc<RwLock<GpioController>>>,
     #[allow(dead_code)]
     pub image_processor: Arc<RwLock<ImageProcessor>>,
     #[allow(dead_code)]
@@ -38,13 +69,13 @@ pub struct PixelSorterApp {
     pub crop_mode: bool,
     pub crop_rect: Option<egui::Rect>,
     pub selection_start: Option<egui::Pos2>,
+    pub crop_aspect_ratio: CropAspectRatio,
 }
 
 impl PixelSorterApp {
     pub fn new(
         pixel_sorter: Arc<PixelSorter>,
         image_processor: Arc<RwLock<ImageProcessor>>,
-        gpio_controller: Option<Arc<RwLock<GpioController>>>,
         camera_controller: Option<Arc<RwLock<CameraController>>>,
         config: Config,
     ) -> Self {
@@ -70,7 +101,6 @@ impl PixelSorterApp {
                 "Ready - Load an image to begin".to_string()
             },
             camera_controller,
-            gpio_controller,
             image_processor,
             config,
             preview_mode: true,
@@ -81,6 +111,7 @@ impl PixelSorterApp {
             crop_mode: false,
             crop_rect: None,
             selection_start: None,
+            crop_aspect_ratio: CropAspectRatio::Square,
         }
     }
 
@@ -154,14 +185,14 @@ impl eframe::App for PixelSorterApp {
                         let response = ui.interact(screen_rect, egui::Id::new("image_interaction"), egui::Sense::click_and_drag());
 
                         if self.crop_mode {
-                            // Handle crop selection
+                            // Handle crop selection with aspect ratio constraint
                             if response.drag_started() {
                                 self.selection_start = Some(response.interact_pointer_pos().unwrap_or_default());
                                 self.crop_rect = None;
                             } else if response.dragged() {
                                 if let Some(start) = self.selection_start {
                                     if let Some(current) = response.interact_pointer_pos() {
-                                        let rect = egui::Rect::from_two_pos(start, current);
+                                        let rect = self.constrain_crop_rect(start, current, screen_rect);
                                         self.crop_rect = Some(rect);
                                     }
                                 }
@@ -329,6 +360,18 @@ impl eframe::App for PixelSorterApp {
 
                             // Crop controls
                             ui.horizontal(|ui| {
+                                // Aspect ratio selection
+                                ui.label("Aspect Ratio:");
+                                egui::ComboBox::from_label("")
+                                    .selected_text(self.crop_aspect_ratio.name())
+                                    .show_ui(ui, |ui| {
+                                        for &ratio in CropAspectRatio::all() {
+                                            ui.selectable_value(&mut self.crop_aspect_ratio, ratio, ratio.name());
+                                        }
+                                    });
+
+                                ui.separator();
+
                                 if ui.button(if self.crop_mode { "Cancel Crop" } else { "Select Crop" }).clicked() {
                                     self.crop_mode = !self.crop_mode;
                                     if !self.crop_mode {
@@ -387,23 +430,7 @@ impl eframe::App for PixelSorterApp {
                 });
             });
 
-        // Handle keyboard input for GPIO simulation
-        ctx.input(|i| {
-            for event in &i.events {
-                if let egui::Event::Key { key, pressed: true, .. } = event {
-                    match key {
-                        egui::Key::Num1 => self.on_button_press(1, ctx),
-                        egui::Key::Num2 => self.on_button_press(2, ctx),
-                        egui::Key::Num3 => self.on_button_press(3, ctx),
-                        egui::Key::Num4 => self.on_button_press(4, ctx),
-                        egui::Key::Num5 => self.on_button_press(5, ctx),
-                        egui::Key::Num6 => self.on_button_press(6, ctx),
-                        egui::Key::Escape => std::process::exit(0),
-                        _ => {}
-                    }
-                }
-            }
-        });
+
 
         // High-performance 30 FPS repaints for smooth camera feed
         if self.preview_mode && self.camera_controller.is_some() && !self.is_processing {
@@ -593,77 +620,7 @@ impl PixelSorterApp {
         }
     }
 
-    fn on_button_press(&mut self, button: u8, ctx: &egui::Context) {
-        match button {
-            1 => {
-                self.load_image(ctx);
-            }
-            2 => {
-                if self.camera_controller.is_some() {
-                    if self.preview_mode {
-                        self.capture_and_sort(ctx);
-                    } else {
-                        self.preview_mode = true;
-                        self.status_message = "Live preview active".to_string();
-                    }
-                } else {
-                    // No camera - cycle algorithm
-                    let current_idx = SortingAlgorithm::all().iter().position(|&x| std::mem::discriminant(&x) == std::mem::discriminant(&self.current_algorithm)).unwrap_or(0);
-                    let next_idx = (current_idx + 1) % SortingAlgorithm::all().len();
-                    self.current_algorithm = SortingAlgorithm::all()[next_idx];
-                    self.process_image(ctx);
-                }
-            }
-            3 => {
-                if self.camera_controller.is_some() {
-                    // Cycle algorithm when camera available
-                    let current_idx = SortingAlgorithm::all().iter().position(|&x| std::mem::discriminant(&x) == std::mem::discriminant(&self.current_algorithm)).unwrap_or(0);
-                    let next_idx = (current_idx + 1) % SortingAlgorithm::all().len();
-                    self.current_algorithm = SortingAlgorithm::all()[next_idx];
-                    if !self.preview_mode {
-                        self.process_image(ctx);
-                    }
-                } else {
-                    // Increase threshold when no camera
-                    self.sorting_params.threshold = (self.sorting_params.threshold + 10.0).min(255.0);
-                    self.process_image(ctx);
-                }
-            }
-            4 => {
-                if self.camera_controller.is_some() {
-                    // Increase threshold when camera available
-                    self.sorting_params.threshold = (self.sorting_params.threshold + 10.0).min(255.0);
-                    if !self.preview_mode {
-                        self.process_image(ctx);
-                    }
-                } else {
-                    // Decrease threshold when no camera
-                    self.sorting_params.threshold = (self.sorting_params.threshold - 10.0).max(0.0);
-                    self.process_image(ctx);
-                }
-            }
-            5 => {
-                if self.camera_controller.is_some() {
-                    // Decrease threshold when camera available
-                    self.sorting_params.threshold = (self.sorting_params.threshold - 10.0).max(0.0);
-                    if !self.preview_mode {
-                        self.process_image(ctx);
-                    }
-                } else {
-                    // Save when no camera
-                    self.save_image();
-                }
-            }
-            6 => {
-                if self.camera_controller.is_some() {
-                    self.save_image();
-                }
-            }
-            _ => {}
-        }
-        
-        self.status_message = format!("Button {} pressed - {}", button, self.current_algorithm.name());
-    }
+
 
     fn auto_save_image(&mut self, image: &image::RgbImage, algorithm: &SortingAlgorithm) -> Result<PathBuf, Box<dyn std::error::Error>> {
         // Create session folder if this is the first save
@@ -898,5 +855,62 @@ impl PixelSorterApp {
         } else {
             self.status_message = "No image or crop selection available".to_string();
         }
+    }
+
+    fn constrain_crop_rect(&self, start: egui::Pos2, current: egui::Pos2, screen_rect: egui::Rect) -> egui::Rect {
+        let target_ratio = self.crop_aspect_ratio.ratio();
+        
+        // Calculate the base rectangle from start to current
+        let mut width = (current.x - start.x).abs();
+        let mut height = (current.y - start.y).abs();
+        
+        // Adjust dimensions to match aspect ratio
+        if width / height > target_ratio {
+            // Too wide, adjust width
+            width = height * target_ratio;
+        } else {
+            // Too tall, adjust height  
+            height = width / target_ratio;
+        }
+        
+        // Determine the direction of the drag
+        let center_x = (start.x + current.x) / 2.0;
+        let center_y = (start.y + current.y) / 2.0;
+        
+        // Create rectangle centered on the drag center
+        let half_width = width / 2.0;
+        let half_height = height / 2.0;
+        
+        let mut min_x = center_x - half_width;
+        let mut min_y = center_y - half_height;
+        let mut max_x = center_x + half_width;
+        let mut max_y = center_y + half_height;
+        
+        // Keep rectangle within screen bounds
+        if min_x < screen_rect.min.x {
+            let offset = screen_rect.min.x - min_x;
+            min_x += offset;
+            max_x += offset;
+        }
+        if max_x > screen_rect.max.x {
+            let offset = max_x - screen_rect.max.x;
+            min_x -= offset;
+            max_x -= offset;
+        }
+        if min_y < screen_rect.min.y {
+            let offset = screen_rect.min.y - min_y;
+            min_y += offset;
+            max_y += offset;
+        }
+        if max_y > screen_rect.max.y {
+            let offset = max_y - screen_rect.max.y;
+            min_y -= offset;
+            max_y -= offset;
+        }
+        
+        egui::Rect::from_min_max(
+            egui::pos2(min_x, min_y),
+            egui::pos2(max_x, max_y)
+        )
     }
 }
