@@ -1,4 +1,145 @@
-use anyhow::{Context, Result};use anyhow::{Context, Result};use anyhow::{Context, Result};use anyhow::{Context, Result};
+use anyhow::{Context, Result};
+use serde::{Deserialize, Serialize};
+use std::path::{Path, PathBuf};
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct Config {
+    pub display: DisplayConfig,
+    pub processing: ProcessingConfig,
+    pub paths: PathConfig,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct DisplayConfig {
+    pub width: u32,
+    pub height: u32,
+    pub fullscreen: bool,
+    pub image_display_width: u32,
+    pub image_display_height: u32,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, Default)]
+pub struct ProcessingConfig {
+    pub default_threshold: f32,
+    pub default_interval: usize,
+    pub max_image_width: u32,
+    pub max_image_height: u32,
+    pub preview_scale_factor: u32,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct PathConfig {
+    pub sample_images_dir: PathBuf,
+    pub default_save_dir: PathBuf,
+    pub config_file: PathBuf,
+}
+
+impl Default for Config {
+    fn default() -> Self {
+        Config {
+            display: DisplayConfig {
+                width: 1024,
+                height: 600,
+                fullscreen: false,
+                image_display_width: 800,
+                image_display_height: 480,
+            },
+            processing: ProcessingConfig {
+                default_threshold: 50.0,
+                default_interval: 10,
+                max_image_width: 1920,
+                max_image_height: 1080,
+                preview_scale_factor: 4,
+            },
+            paths: PathConfig {
+                sample_images_dir: PathBuf::from("sample_images"),
+                default_save_dir: PathBuf::from("output"),
+                config_file: PathBuf::from("pixelsort_config.toml"),
+            },
+        }
+    }
+}
+
+impl Config {
+    pub fn load() -> Result<Self> {
+        let config_path = PathBuf::from("pixelsort_config.toml");
+        if config_path.exists() {
+            Self::load_from_file(&config_path)
+        } else {
+            log::info!("Configuration file not found, using default settings");
+            let config = Self::default();
+            config.save_to_file(&config_path)?;
+            Ok(config)
+        }
+    }
+
+    pub fn load_from_file<P: AsRef<Path>>(path: P) -> Result<Self> {
+        let config_str = std::fs::read_to_string(path.as_ref())
+            .with_context(|| format!("Failed to read config file: {}", path.as_ref().display()))?;
+        let config: Config = toml::from_str(&config_str)
+            .with_context(|| "Failed to parse config file")?;
+        config.validate()?;
+        Ok(config)
+    }
+
+    pub fn save_to_file<P: AsRef<Path>>(&self, path: P) -> Result<()> {
+        let config_str = toml::to_string_pretty(self)
+            .with_context(|| "Failed to serialize config")?;
+        if let Some(parent) = path.as_ref().parent() {
+            std::fs::create_dir_all(parent)
+                .with_context(|| format!("Failed to create config directory: {}", parent.display()))?;
+        }
+        std::fs::write(path.as_ref(), config_str)
+            .with_context(|| format!("Failed to write config file: {}", path.as_ref().display()))?;
+        Ok(())
+    }
+
+    pub fn validate(&self) -> Result<()> {
+        if self.display.width == 0 || self.display.height == 0 {
+            return Err(anyhow::anyhow!("Invalid display dimensions"));
+        }
+        if self.display.image_display_width > self.display.width ||
+           self.display.image_display_height > self.display.height {
+            return Err(anyhow::anyhow!("Image display size larger than screen"));
+        }
+        if self.processing.default_threshold < 0.0 || self.processing.default_threshold > 255.0 {
+            return Err(anyhow::anyhow!("Invalid default threshold"));
+        }
+        if self.processing.default_interval == 0 {
+            return Err(anyhow::anyhow!("Invalid default interval"));
+        }
+        Ok(())
+    }
+
+    pub fn create_directories(&self) -> Result<()> {
+        std::fs::create_dir_all(&self.paths.sample_images_dir)
+            .with_context(|| format!("Failed to create sample images directory: {}", self.paths.sample_images_dir.display()))?;
+        std::fs::create_dir_all(&self.paths.default_save_dir)
+            .with_context(|| format!("Failed to create save directory: {}", self.paths.default_save_dir.display()))?;
+        Ok(())
+    }
+}
+
+pub struct ConfigBuilder {
+    config: Config,
+}
+
+impl ConfigBuilder {
+    pub fn new() -> Self { Self { config: Config::default() } }
+    pub fn display_size(mut self, width: u32, height: u32) -> Self { self.config.display.width = width; self.config.display.height = height; self }
+    pub fn fullscreen(mut self, fullscreen: bool) -> Self { self.config.display.fullscreen = fullscreen; self }
+    pub fn image_display_size(mut self, width: u32, height: u32) -> Self { self.config.display.image_display_width = width; self.config.display.image_display_height = height; self }
+    pub fn max_image_size(mut self, width: u32, height: u32) -> Self { self.config.processing.max_image_width = width; self.config.processing.max_image_height = height; self }
+    pub fn default_threshold(mut self, threshold: f32) -> Self { self.config.processing.default_threshold = threshold; self }
+    pub fn build(self) -> Result<Config> { self.config.validate()?; Ok(self.config) }
+}
+
+impl Config {
+    pub fn raspberry_pi_7inch() -> Self { Config { display: DisplayConfig { width: 800, height: 480, fullscreen: true, image_display_width: 480, image_display_height: 360 }, ..Default::default() } }
+    pub fn desktop_development() -> Self { Config { display: DisplayConfig { width: 1024, height: 768, fullscreen: false, image_display_width: 600, image_display_height: 450 }, ..Default::default() } }
+    pub fn raspberry_pi_hdmi() -> Self { Config { display: DisplayConfig { width: 1920, height: 1080, fullscreen: true, image_display_width: 1200, image_display_height: 900 }, ..Default::default() } }
+}
+use anyhow::{Context, Result};use anyhow::{Context, Result};use anyhow::{Context, Result};use anyhow::{Context, Result};use anyhow::{Context, Result};
 
 use serde::{Deserialize, Serialize};
 
@@ -6,7 +147,7 @@ use std::path::{Path, PathBuf};use serde::{Deserialize, Serialize};
 
 
 
-#[derive(Debug, Clone, Serialize, Deserialize)]use std::path::{Path, PathBuf};use serde::{Deserialize, Serialize};use serde::{Deserialize, Serialize};
+#[derive(Debug, Clone, Serialize, Deserialize)]use std::path::{Path, PathBuf};use serde::{Deserialize, Serialize};
 
 pub struct Config {
 
@@ -14,7 +155,7 @@ pub struct Config {
 
     pub processing: ProcessingConfig,
 
-    pub paths: PathConfig,#[derive(Debug, Clone, Serialize, Deserialize)]use std::path::{Path, PathBuf};use std::path::{Path, PathBuf};
+    pub paths: PathConfig,#[derive(Debug, Clone, Serialize, Deserialize)]use std::path::{Path, PathBuf};use serde::{Deserialize, Serialize};use serde::{Deserialize, Serialize};
 
 }
 
@@ -30,7 +171,7 @@ pub struct DisplayConfig {    pub display: DisplayConfig,
 
     pub fullscreen: bool,
 
-    pub image_display_width: u32,    pub paths: PathConfig,#[derive(Debug, Clone, Serialize, Deserialize)]#[derive(Debug, Clone, Serialize, Deserialize)]
+    pub image_display_width: u32,    pub paths: PathConfig,#[derive(Debug, Clone, Serialize, Deserialize)]use std::path::{Path, PathBuf};use std::path::{Path, PathBuf};
 
     pub image_display_height: u32,
 
@@ -38,7 +179,7 @@ pub struct DisplayConfig {    pub display: DisplayConfig,
 
 
 
-#[derive(Debug, Clone, Serialize, Deserialize, Default)]pub struct Config {pub struct Config {
+#[derive(Debug, Clone, Serialize, Deserialize, Default)]pub struct Config {
 
 pub struct ProcessingConfig {
 
@@ -46,7 +187,7 @@ pub struct ProcessingConfig {
 
     pub default_interval: usize,
 
-    pub max_image_width: u32,pub struct DisplayConfig {    pub display: DisplayConfig,    pub display: DisplayConfig,
+    pub max_image_width: u32,pub struct DisplayConfig {    pub display: DisplayConfig,
 
     pub max_image_height: u32,
 
@@ -54,7 +195,7 @@ pub struct ProcessingConfig {
 
 }
 
-    pub height: u32,    pub processing: ProcessingConfig,    pub processing: ProcessingConfig,
+    pub height: u32,    pub processing: ProcessingConfig,
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 
@@ -62,7 +203,7 @@ pub struct PathConfig {    pub fullscreen: bool,
 
     pub sample_images_dir: PathBuf,
 
-    pub default_save_dir: PathBuf,    pub image_display_width: u32,    pub paths: PathConfig,    pub paths: PathConfig,
+    pub default_save_dir: PathBuf,    pub image_display_width: u32,    pub paths: PathConfig,#[derive(Debug, Clone, Serialize, Deserialize)]#[derive(Debug, Clone, Serialize, Deserialize)]
 
     pub config_file: PathBuf,
 
@@ -70,7 +211,7 @@ pub struct PathConfig {    pub fullscreen: bool,
 
 
 
-impl Default for Config {}}}
+impl Default for Config {}}
 
     fn default() -> Self {
 
@@ -78,7 +219,7 @@ impl Default for Config {}}}
 
             display: DisplayConfig {
 
-                width: 1024,#[derive(Debug, Clone, Serialize, Deserialize, Default)]
+                width: 1024,#[derive(Debug, Clone, Serialize, Deserialize, Default)]pub struct Config {pub struct Config {
 
                 height: 600,
 
@@ -86,7 +227,7 @@ impl Default for Config {}}}
 
                 image_display_width: 800,
 
-                image_display_height: 480,    pub default_threshold: f32,#[derive(Debug, Clone, Serialize, Deserialize)]#[derive(Debug, Clone, Serialize, Deserialize)]
+                image_display_height: 480,    pub default_threshold: f32,#[derive(Debug, Clone, Serialize, Deserialize)]
 
             },
 
@@ -94,7 +235,7 @@ impl Default for Config {}}}
 
                 default_threshold: 50.0,
 
-                default_interval: 10,    pub max_image_width: u32,pub struct DisplayConfig {pub struct DisplayConfig {
+                default_interval: 10,    pub max_image_width: u32,pub struct DisplayConfig {    pub display: DisplayConfig,    pub display: DisplayConfig,
 
                 max_image_width: 1920,
 
@@ -102,7 +243,7 @@ impl Default for Config {}}}
 
                 preview_scale_factor: 4,
 
-            },    pub preview_scale_factor: u32,    pub width: u32,    pub width: u32,
+            },    pub preview_scale_factor: u32,    pub width: u32,
 
             paths: PathConfig {
 
@@ -110,7 +251,7 @@ impl Default for Config {}}}
 
                 default_save_dir: PathBuf::from("output"),
 
-                config_file: PathBuf::from("pixelsort_config.toml"),    pub height: u32,    pub height: u32,
+                config_file: PathBuf::from("pixelsort_config.toml"),    pub height: u32,    pub processing: ProcessingConfig,    pub processing: ProcessingConfig,
 
             },
 
@@ -118,7 +259,7 @@ impl Default for Config {}}}
 
     }
 
-}pub struct PathConfig {    pub fullscreen: bool,    pub fullscreen: bool,
+}pub struct PathConfig {    pub fullscreen: bool,
 
 
 
@@ -126,7 +267,7 @@ impl Config {    pub sample_images_dir: PathBuf,
 
     pub fn load() -> Result<Self> {
 
-        let config_path = PathBuf::from("pixelsort_config.toml");    pub default_save_dir: PathBuf,    pub image_display_width: u32,    pub image_display_width: u32,
+        let config_path = PathBuf::from("pixelsort_config.toml");    pub default_save_dir: PathBuf,    pub image_display_width: u32,    pub paths: PathConfig,    pub paths: PathConfig,
 
         
 
@@ -134,7 +275,7 @@ impl Config {    pub sample_images_dir: PathBuf,
 
             Self::load_from_file(&config_path)
 
-        } else {}    pub image_display_height: u32,    pub image_display_height: u32,
+        } else {}    pub image_display_height: u32,
 
             log::info!("Configuration file not found, using default settings");
 
@@ -142,7 +283,7 @@ impl Config {    pub sample_images_dir: PathBuf,
 
             config.save_to_file(&config_path)?;
 
-            Ok(config)impl Default for Config {}}
+            Ok(config)impl Default for Config {}}}
 
         }
 
@@ -158,7 +299,7 @@ impl Config {    pub sample_images_dir: PathBuf,
 
         
 
-        let config: Config = toml::from_str(&config_str)                width: 1024,#[derive(Debug, Clone, Serialize, Deserialize, Default)]#[derive(Debug, Clone, Serialize, Deserialize, Default)]
+        let config: Config = toml::from_str(&config_str)                width: 1024,#[derive(Debug, Clone, Serialize, Deserialize, Default)]
 
             .with_context(|| "Failed to parse config file")?;
 
@@ -166,7 +307,7 @@ impl Config {    pub sample_images_dir: PathBuf,
 
         config.validate()?;
 
-        log::info!("Configuration loaded from {}", path.as_ref().display());                fullscreen: false,pub struct ProcessingConfig {pub struct ProcessingConfig {
+        log::info!("Configuration loaded from {}", path.as_ref().display());                fullscreen: false,pub struct ProcessingConfig {
 
         Ok(config)
 
@@ -174,7 +315,7 @@ impl Config {    pub sample_images_dir: PathBuf,
 
 
 
-    pub fn save_to_file<P: AsRef<Path>>(&self, path: P) -> Result<()> {                image_display_height: 480,    pub default_threshold: f32,use std::path::{Path, PathBuf};
+    pub fn save_to_file<P: AsRef<Path>>(&self, path: P) -> Result<()> {                image_display_height: 480,    pub default_threshold: f32,#[derive(Debug, Clone, Serialize, Deserialize)]#[derive(Debug, Clone, Serialize, Deserialize)]
 
         let config_str = toml::to_string_pretty(self)
 
@@ -190,7 +331,7 @@ impl Config {    pub sample_images_dir: PathBuf,
 
         }
 
-                        default_interval: 10,    pub max_image_width: u32,#[derive(Debug, Clone, Serialize, Deserialize)]
+                        default_interval: 10,    pub max_image_width: u32,pub struct DisplayConfig {pub struct DisplayConfig {
 
         std::fs::write(path.as_ref(), config_str)
 
@@ -198,7 +339,7 @@ impl Config {    pub sample_images_dir: PathBuf,
 
         
 
-        log::info!("Configuration saved to {}", path.as_ref().display());                max_image_height: 1080,    pub max_image_height: u32,pub struct Config {
+        log::info!("Configuration saved to {}", path.as_ref().display());                max_image_height: 1080,    pub max_image_height: u32,
 
         Ok(())
 
@@ -206,7 +347,7 @@ impl Config {    pub sample_images_dir: PathBuf,
 
 
 
-    pub fn validate(&self) -> Result<()> {            },    pub preview_scale_factor: u32,    pub display: DisplayConfig,
+    pub fn validate(&self) -> Result<()> {            },    pub preview_scale_factor: u32,    pub width: u32,    pub width: u32,
 
         if self.display.width == 0 || self.display.height == 0 {
 
@@ -214,13 +355,235 @@ impl Config {    pub sample_images_dir: PathBuf,
 
         }
 
-                sample_images_dir: PathBuf::from("sample_images"),}    pub processing: ProcessingConfig,
+                sample_images_dir: PathBuf::from("sample_images"),}
 
         if self.display.image_display_width > self.display.width || 
 
            self.display.image_display_height > self.display.height {                default_save_dir: PathBuf::from("output"),
 
             return Err(anyhow::anyhow!("Image display size larger than screen"));
+
+        }                config_file: PathBuf::from("pixelsort_config.toml"),    pub height: u32,    pub height: u32,
+
+
+
+        if self.processing.default_threshold < 0.0 || self.processing.default_threshold > 255.0 {            },
+
+            return Err(anyhow::anyhow!("Invalid default threshold"));
+
+        }        }#[derive(Debug, Clone, Serialize, Deserialize)]
+
+
+
+        if self.processing.default_interval == 0 {    }
+
+            return Err(anyhow::anyhow!("Invalid default interval"));
+
+        }}pub struct PathConfig {    pub fullscreen: bool,    pub fullscreen: bool,
+
+
+
+        Ok(())
+
+    }
+
+impl Config {    pub sample_images_dir: PathBuf,
+
+    pub fn create_directories(&self) -> Result<()> {
+
+        std::fs::create_dir_all(&self.paths.sample_images_dir)    pub fn load() -> Result<Self> {
+
+            .with_context(|| format!("Failed to create sample images directory: {}", 
+
+                self.paths.sample_images_dir.display()))?;        let config_path = PathBuf::from("pixelsort_config.toml");    pub default_save_dir: PathBuf,    pub image_display_width: u32,    pub image_display_width: u32,
+
+
+
+        std::fs::create_dir_all(&self.paths.default_save_dir)        
+
+            .with_context(|| format!("Failed to create save directory: {}", 
+
+                self.paths.default_save_dir.display()))?;        if config_path.exists() {    pub config_file: PathBuf,
+
+
+
+        Ok(())            Self::load_from_file(&config_path)
+
+    }
+
+}        } else {}    pub image_display_height: u32,    pub image_display_height: u32,
+
+
+
+pub struct ConfigBuilder {            log::info!("Configuration file not found, using default settings");
+
+    config: Config,
+
+}            let config = Self::default();
+
+
+
+impl ConfigBuilder {            config.save_to_file(&config_path)?;
+
+    pub fn new() -> Self {
+
+        Self {            Ok(config)impl Default for Config {}}
+
+            config: Config::default(),
+
+        }        }
+
+    }
+
+    }    fn default() -> Self {
+
+    pub fn display_size(mut self, width: u32, height: u32) -> Self {
+
+        self.config.display.width = width;
+
+        self.config.display.height = height;
+
+        self    pub fn load_from_file<P: AsRef<Path>>(path: P) -> Result<Self> {        Config {
+
+    }
+
+        let config_str = std::fs::read_to_string(path.as_ref())
+
+    pub fn fullscreen(mut self, fullscreen: bool) -> Self {
+
+        self.config.display.fullscreen = fullscreen;            .with_context(|| format!("Failed to read config file: {}", path.as_ref().display()))?;            display: DisplayConfig {
+
+        self
+
+    }        
+
+
+
+    pub fn image_display_size(mut self, width: u32, height: u32) -> Self {        let config: Config = toml::from_str(&config_str)                width: 1024,#[derive(Debug, Clone, Serialize, Deserialize, Default)]#[derive(Debug, Clone, Serialize, Deserialize, Default)]
+
+        self.config.display.image_display_width = width;
+
+        self.config.display.image_display_height = height;            .with_context(|| "Failed to parse config file")?;
+
+        self
+
+    }                        height: 600,
+
+
+
+    pub fn max_image_size(mut self, width: u32, height: u32) -> Self {        config.validate()?;
+
+        self.config.processing.max_image_width = width;
+
+        self.config.processing.max_image_height = height;        log::info!("Configuration loaded from {}", path.as_ref().display());                fullscreen: false,pub struct ProcessingConfig {pub struct ProcessingConfig {
+
+        self
+
+    }        Ok(config)
+
+
+
+    pub fn default_threshold(mut self, threshold: f32) -> Self {    }                image_display_width: 800,
+
+        self.config.processing.default_threshold = threshold;
+
+        self
+
+    }
+
+    pub fn save_to_file<P: AsRef<Path>>(&self, path: P) -> Result<()> {                image_display_height: 480,    pub default_threshold: f32,use std::path::{Path, PathBuf};
+
+    pub fn build(self) -> Result<Config> {
+
+        self.config.validate()?;        let config_str = toml::to_string_pretty(self)
+
+        Ok(self.config)
+
+    }            .with_context(|| "Failed to serialize config")?;            },
+
+}
+
+        
+
+impl Config {
+
+    pub fn raspberry_pi_7inch() -> Self {        if let Some(parent) = path.as_ref().parent() {            processing: ProcessingConfig {    pub default_interval: usize,
+
+        Config {
+
+            display: DisplayConfig {            std::fs::create_dir_all(parent)
+
+                width: 800,
+
+                height: 480,                .with_context(|| format!("Failed to create config directory: {}", parent.display()))?;                default_threshold: 50.0,
+
+                fullscreen: true,
+
+                image_display_width: 480,        }
+
+                image_display_height: 360,
+
+            },                        default_interval: 10,    pub max_image_width: u32,#[derive(Debug, Clone, Serialize, Deserialize)]
+
+            ..Default::default()
+
+        }        std::fs::write(path.as_ref(), config_str)
+
+    }
+
+            .with_context(|| format!("Failed to write config file: {}", path.as_ref().display()))?;                max_image_width: 1920,
+
+    pub fn desktop_development() -> Self {
+
+        Config {        
+
+            display: DisplayConfig {
+
+                width: 1024,        log::info!("Configuration saved to {}", path.as_ref().display());                max_image_height: 1080,    pub max_image_height: u32,pub struct Config {
+
+                height: 768,
+
+                fullscreen: false,        Ok(())
+
+                image_display_width: 600,
+
+                image_display_height: 450,    }                preview_scale_factor: 4,
+
+            },
+
+            ..Default::default()
+
+        }
+
+    }    pub fn validate(&self) -> Result<()> {            },    pub preview_scale_factor: u32,    pub display: DisplayConfig,
+
+
+
+    pub fn raspberry_pi_hdmi() -> Self {        if self.display.width == 0 || self.display.height == 0 {
+
+        Config {
+
+            display: DisplayConfig {            return Err(anyhow::anyhow!("Invalid display dimensions"));            paths: PathConfig {
+
+                width: 1920,
+
+                height: 1080,        }
+
+                fullscreen: true,
+
+                image_display_width: 1200,                sample_images_dir: PathBuf::from("sample_images"),}    pub processing: ProcessingConfig,
+
+                image_display_height: 900,
+
+            },        if self.display.image_display_width > self.display.width || 
+
+            ..Default::default()
+
+        }           self.display.image_display_height > self.display.height {                default_save_dir: PathBuf::from("output"),
+
+    }
+
+}            return Err(anyhow::anyhow!("Image display size larger than screen"));
 
         }                config_file: PathBuf::from("pixelsort_config.toml"),    pub paths: PathConfig,
 
