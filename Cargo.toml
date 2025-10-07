@@ -17,8 +17,7 @@ eframe = "0.24"
 egui = "0.24"
 egui_extras = "0.24"
 
-# GPIO control for Raspberry Pi
-rppal = { version = "0.14", optional = true }
+
 
 # Raspberry Pi Camera support (using system libcamera via process calls)
 # rascam = { version = "0.0.2", optional = true }  # Disabled - requires old MMAL libs
@@ -67,7 +66,6 @@ name = "pixelsort-pi"
 path = "src/main.rs"
 
 [features]
-default = ["gpio", "camera"]
-gpio = ["rppal"]
+default = ["camera"]
 camera = []  # Camera support via libcamera system calls
 dev-simulation = ["gilrs"]

@@ -321,7 +321,7 @@ impl eframe::App for PixelSorterApp {
                             // Algorithm and parameters
                             ui.horizontal(|ui| {
                                 ui.label("Algorithm:");
-                                egui::ComboBox::from_label("")
+                                egui::ComboBox::from_id_source("sorting_algorithm")
                                     .selected_text(self.current_algorithm.name())
                                     .show_ui(ui, |ui| {
                                         for &algorithm in SortingAlgorithm::all() {
@@ -360,24 +360,26 @@ impl eframe::App for PixelSorterApp {
 
                             // Crop controls
                             ui.horizontal(|ui| {
-                                // Aspect ratio selection
-                                ui.label("Aspect Ratio:");
-                                egui::ComboBox::from_label("")
-                                    .selected_text(self.crop_aspect_ratio.name())
-                                    .show_ui(ui, |ui| {
-                                        for &ratio in CropAspectRatio::all() {
-                                            ui.selectable_value(&mut self.crop_aspect_ratio, ratio, ratio.name());
-                                        }
-                                    });
-
-                                ui.separator();
-
                                 if ui.button(if self.crop_mode { "Cancel Crop" } else { "Select Crop" }).clicked() {
                                     self.crop_mode = !self.crop_mode;
                                     if !self.crop_mode {
                                         self.crop_rect = None;
                                         self.selection_start = None;
                                     }
+                                }
+
+                                if self.crop_mode {
+                                    ui.separator();
+                                    
+                                    // Aspect ratio selection (only visible in crop mode)
+                                    ui.label("Aspect Ratio:");
+                                    egui::ComboBox::from_id_source("crop_aspect_ratio")
+                                        .selected_text(self.crop_aspect_ratio.name())
+                                        .show_ui(ui, |ui| {
+                                            for &ratio in CropAspectRatio::all() {
+                                                ui.selectable_value(&mut self.crop_aspect_ratio, ratio, ratio.name());
+                                            }
+                                        });
                                 }
 
                                 if self.crop_mode && self.crop_rect.is_some() {
