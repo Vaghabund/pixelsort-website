@@ -43,12 +43,14 @@ impl SortingAlgorithm {
 #[derive(Debug, Clone)]
 pub struct SortingParameters {
     pub threshold: f32,
+    pub hue_shift: f32,
 }
 
 impl Default for SortingParameters {
     fn default() -> Self {
         Self {
             threshold: 50.0,
+            hue_shift: 0.0,
         }
     }
 }
@@ -68,6 +70,11 @@ impl PixelSorter {
     ) -> Result<RgbImage> {
         let (_width, _height) = image.dimensions();
         let mut result = image.clone();
+
+        // Apply hue shift first if needed
+        if params.hue_shift != 0.0 {
+            self.apply_hue_shift(&mut result, params.hue_shift);
+        }
 
         match algorithm {
             SortingAlgorithm::Horizontal => self.sort_horizontal(&mut result, params),
@@ -221,9 +228,81 @@ impl PixelSorter {
         
         let preview_params = SortingParameters {
             threshold: params.threshold,
+            hue_shift: params.hue_shift,
         };
         
         self.sort_pixels(image, algorithm, &preview_params)
+    }
+
+    fn apply_hue_shift(&self, image: &mut RgbImage, hue_shift: f32) {
+        let (width, height) = image.dimensions();
+        
+        for y in 0..height {
+            for x in 0..width {
+                let pixel = image.get_pixel(x, y);
+                let shifted_pixel = self.shift_pixel_hue(pixel, hue_shift);
+                image.put_pixel(x, y, shifted_pixel);
+            }
+        }
+    }
+
+    fn shift_pixel_hue(&self, pixel: &Rgb<u8>, hue_shift: f32) -> Rgb<u8> {
+        // Convert RGB to HSV
+        let r = pixel[0] as f32 / 255.0;
+        let g = pixel[1] as f32 / 255.0;
+        let b = pixel[2] as f32 / 255.0;
+
+        let max = r.max(g.max(b));
+        let min = r.min(g.min(b));
+        let delta = max - min;
+
+        let mut h = if delta == 0.0 {
+            0.0
+        } else if max == r {
+            60.0 * (((g - b) / delta) % 6.0)
+        } else if max == g {
+            60.0 * (((b - r) / delta) + 2.0)
+        } else {
+            60.0 * (((r - g) / delta) + 4.0)
+        };
+
+        if h < 0.0 {
+            h += 360.0;
+        }
+
+        let s = if max == 0.0 { 0.0 } else { delta / max };
+        let v = max;
+
+        // Apply hue shift
+        h = (h + hue_shift) % 360.0;
+        if h < 0.0 {
+            h += 360.0;
+        }
+
+        // Convert HSV back to RGB
+        let c = v * s;
+        let x = c * (1.0 - ((h / 60.0) % 2.0 - 1.0).abs());
+        let m = v - c;
+
+        let (r_prime, g_prime, b_prime) = if h < 60.0 {
+            (c, x, 0.0)
+        } else if h < 120.0 {
+            (x, c, 0.0)
+        } else if h < 180.0 {
+            (0.0, c, x)
+        } else if h < 240.0 {
+            (0.0, x, c)
+        } else if h < 300.0 {
+            (x, 0.0, c)
+        } else {
+            (c, 0.0, x)
+        };
+
+        let r_final = ((r_prime + m) * 255.0).round() as u8;
+        let g_final = ((g_prime + m) * 255.0).round() as u8;
+        let b_final = ((b_prime + m) * 255.0).round() as u8;
+
+        Rgb([r_final, g_final, b_final])
     }
 }
 
