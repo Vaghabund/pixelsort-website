@@ -44,6 +44,8 @@ impl SortingAlgorithm {
 pub struct SortingParameters {
     pub threshold: f32,
     pub hue_shift: f32,
+    pub color_tint: f32,
+    pub tint_strength: f32,
 }
 
 impl Default for SortingParameters {
@@ -51,6 +53,8 @@ impl Default for SortingParameters {
         Self {
             threshold: 50.0,
             hue_shift: 0.0,
+            color_tint: 0.0,
+            tint_strength: 0.3,
         }
     }
 }
@@ -71,9 +75,13 @@ impl PixelSorter {
         let (_width, _height) = image.dimensions();
         let mut result = image.clone();
 
-        // Apply hue shift first if needed
+        // Apply color effects first if needed
         if params.hue_shift != 0.0 {
             self.apply_hue_shift(&mut result, params.hue_shift);
+        }
+        
+        if params.color_tint != 0.0 {
+            self.apply_color_tint(&mut result, params.color_tint, params.tint_strength);
         }
 
         match algorithm {
@@ -229,6 +237,8 @@ impl PixelSorter {
         let preview_params = SortingParameters {
             threshold: params.threshold,
             hue_shift: params.hue_shift,
+            color_tint: params.color_tint,
+            tint_strength: params.tint_strength,
         };
         
         self.sort_pixels(image, algorithm, &preview_params)
@@ -303,6 +313,95 @@ impl PixelSorter {
         let b_final = ((b_prime + m) * 255.0).round() as u8;
 
         Rgb([r_final, g_final, b_final])
+    }
+
+    fn apply_color_tint(&self, image: &mut RgbImage, tint_hue: f32, strength: f32) {
+        let (width, height) = image.dimensions();
+        
+        // Convert tint hue to RGB color
+        let tint_color = self.hue_to_rgb(tint_hue);
+        
+        for y in 0..height {
+            for x in 0..width {
+                let pixel = image.get_pixel(x, y);
+                let tinted_pixel = self.blend_with_tint(pixel, &tint_color, strength);
+                image.put_pixel(x, y, tinted_pixel);
+            }
+        }
+    }
+
+    fn hue_to_rgb(&self, hue: f32) -> Rgb<u8> {
+        // Create a saturated color from the hue
+        let h = ((hue % 360.0) + 360.0) % 360.0; // Normalize to 0-360
+        let s = 1.0; // Full saturation
+        let v = 1.0; // Full brightness
+
+        let c = v * s;
+        let x = c * (1.0 - ((h / 60.0) % 2.0 - 1.0).abs());
+        let m = v - c;
+
+        let (r_prime, g_prime, b_prime) = if h < 60.0 {
+            (c, x, 0.0)
+        } else if h < 120.0 {
+            (x, c, 0.0)
+        } else if h < 180.0 {
+            (0.0, c, x)
+        } else if h < 240.0 {
+            (0.0, x, c)
+        } else if h < 300.0 {
+            (x, 0.0, c)
+        } else {
+            (c, 0.0, x)
+        };
+
+        let r = ((r_prime + m) * 255.0).round() as u8;
+        let g = ((g_prime + m) * 255.0).round() as u8;
+        let b = ((b_prime + m) * 255.0).round() as u8;
+
+        Rgb([r, g, b])
+    }
+
+    fn blend_with_tint(&self, original: &Rgb<u8>, tint: &Rgb<u8>, strength: f32) -> Rgb<u8> {
+        // Use overlay/multiply blending to tint whites and all colors
+        let strength = strength.clamp(0.0, 1.0);
+        
+        let orig_r = original[0] as f32 / 255.0;
+        let orig_g = original[1] as f32 / 255.0;
+        let orig_b = original[2] as f32 / 255.0;
+        
+        let tint_r = tint[0] as f32 / 255.0;
+        let tint_g = tint[1] as f32 / 255.0;
+        let tint_b = tint[2] as f32 / 255.0;
+        
+        // Color overlay blend - tints whites while preserving contrast
+        let blend_r = if orig_r < 0.5 {
+            2.0 * orig_r * tint_r
+        } else {
+            1.0 - 2.0 * (1.0 - orig_r) * (1.0 - tint_r)
+        };
+        
+        let blend_g = if orig_g < 0.5 {
+            2.0 * orig_g * tint_g
+        } else {
+            1.0 - 2.0 * (1.0 - orig_g) * (1.0 - tint_g)
+        };
+        
+        let blend_b = if orig_b < 0.5 {
+            2.0 * orig_b * tint_b
+        } else {
+            1.0 - 2.0 * (1.0 - orig_b) * (1.0 - tint_b)
+        };
+        
+        // Mix with original based on strength
+        let final_r = (orig_r * (1.0 - strength) + blend_r * strength).clamp(0.0, 1.0);
+        let final_g = (orig_g * (1.0 - strength) + blend_g * strength).clamp(0.0, 1.0);
+        let final_b = (orig_b * (1.0 - strength) + blend_b * strength).clamp(0.0, 1.0);
+        
+        Rgb([
+            (final_r * 255.0).round() as u8,
+            (final_g * 255.0).round() as u8,
+            (final_b * 255.0).round() as u8,
+        ])
     }
 }
 

@@ -302,10 +302,10 @@ impl eframe::App for PixelSorterApp {
 
                                 ui.add_space(15.0);
 
-                                // Hue Shift Slider
-                                ui.label(format!("Hue: {:.0}°", self.sorting_params.hue_shift));
-                                let hue_changed = ui.add(
-                                    egui::Slider::new(&mut self.sorting_params.hue_shift, -180.0..=180.0)
+                                // Color Tint Slider
+                                ui.label(format!("Color Tint: {:.0}°", self.sorting_params.color_tint));
+                                let tint_changed = ui.add(
+                                    egui::Slider::new(&mut self.sorting_params.color_tint, 0.0..=360.0)
                                         .step_by(1.0)
                                         .show_value(false)
                                 ).changed();
@@ -320,7 +320,7 @@ impl eframe::App for PixelSorterApp {
                                         .show_value(false)
                                 ).changed();
 
-                                if (hue_changed || threshold_changed) && !self.is_processing {
+                                if (tint_changed || threshold_changed) && !self.is_processing {
                                     self.apply_pixel_sort(ctx);
                                 }
                             });
