@@ -70,6 +70,8 @@ pub struct PixelSorterApp {
     pub crop_rect: Option<egui::Rect>,
     pub selection_start: Option<egui::Pos2>,
     pub crop_aspect_ratio: CropAspectRatio,
+    pub crop_rotation: i32, // degrees (0,90,180,270)
+    pub was_cropped: bool,
 }
 
 impl PixelSorterApp {
@@ -112,6 +114,8 @@ impl PixelSorterApp {
             crop_rect: None,
             selection_start: None,
             crop_aspect_ratio: CropAspectRatio::Square,
+            crop_rotation: 0,
+            was_cropped: false,
         }
     }
 
@@ -414,6 +418,68 @@ impl eframe::App for PixelSorterApp {
                                                 ui.selectable_value(&mut self.crop_aspect_ratio, ratio, ratio.name());
                                             }
                                         });
+                                    ui.separator();
+
+                                    // Rotation and preview controls for crop
+                                    ui.horizontal(|ui| {
+                                        if ui.button("Rotate 90°").clicked() {
+                                            self.crop_rotation = (self.crop_rotation + 90) % 360;
+                                        }
+
+                                        if ui.button("Preview Crop").clicked() {
+                                            // Create a temporary preview by applying the crop without committing
+                                            // We'll create a processed texture from the cropped region and mark was_cropped true
+                                            if let (Some(ref original), Some(crop_rect)) = (&self.original_image, self.crop_rect) {
+                                                // Reuse apply_crop_and_sort logic but avoid replacing original_image permanently
+                                                // We'll perform the crop and create a processed texture
+                                                let screen_rect = ctx.screen_rect();
+                                                let image_size = original.dimensions();
+                                                let scale_x = image_size.0 as f32 / screen_rect.width();
+                                                let scale_y = image_size.1 as f32 / screen_rect.height();
+
+                                                let crop_min_x = (crop_rect.min.x * scale_x).max(0.0).min(image_size.0 as f32) as u32;
+                                                let crop_min_y = (crop_rect.min.y * scale_y).max(0.0).min(image_size.1 as f32) as u32;
+                                                let crop_max_x = (crop_rect.max.x * scale_x).max(0.0).min(image_size.0 as f32) as u32;
+                                                let crop_max_y = (crop_rect.max.y * scale_y).max(0.0).min(image_size.1 as f32) as u32;
+
+                                                let crop_width = crop_max_x.saturating_sub(crop_min_x);
+                                                let crop_height = crop_max_y.saturating_sub(crop_min_y);
+
+                                                if crop_width > 0 && crop_height > 0 {
+                                                    let mut cropped = image::RgbImage::new(crop_width, crop_height);
+                                                    for y in 0..crop_height {
+                                                        for x in 0..crop_width {
+                                                            let src_x = crop_min_x + x;
+                                                            let src_y = crop_min_y + y;
+                                                            if src_x < image_size.0 && src_y < image_size.1 {
+                                                                let pixel = original.get_pixel(src_x, src_y);
+                                                                cropped.put_pixel(x, y, *pixel);
+                                                            }
+                                                        }
+                                                    }
+
+                                                    // Apply rotation if needed
+                                                    let rotated = match self.crop_rotation {
+                                                        90 => image::imageops::rotate90(&cropped),
+                                                        180 => image::imageops::rotate180(&cropped),
+                                                        270 => image::imageops::rotate270(&cropped),
+                                                        _ => cropped,
+                                                    };
+
+                                                    // Apply pixel sorting to the cropped preview
+                                                    let algorithm = self.current_algorithm;
+                                                    let params = self.sorting_params.clone();
+                                                    let pixel_sorter = Arc::clone(&self.pixel_sorter);
+                                                    if let Ok(sorted_cropped) = pixel_sorter.sort_pixels(&rotated, algorithm, &params) {
+                                                        // Create a processed texture from the sorted crop and mark was_cropped true
+                                                        self.processed_image = Some(sorted_cropped.clone());
+                                                        self.create_processed_texture(ctx, sorted_cropped, egui::TextureOptions::NEAREST);
+                                                        self.was_cropped = true;
+                                                    }
+                                                }
+                                            }
+                                        }
+                                    });
                                 }
 
                                 if self.crop_mode && self.crop_rect.is_some() {
@@ -531,7 +597,8 @@ impl PixelSorterApp {
             match pixel_sorter.sort_pixels(original, algorithm, &params) {
                 Ok(sorted_image) => {
                     self.processed_image = Some(sorted_image.clone());
-                    self.create_processed_texture(ctx, sorted_image, egui::TextureOptions::LINEAR);
+                    let filter = if self.was_cropped { egui::TextureOptions::NEAREST } else { egui::TextureOptions::LINEAR };
+                    self.create_processed_texture(ctx, sorted_image, filter);
                     
                     self.is_processing = false;
                     self.status_message = "Processing complete!".to_string();
@@ -559,7 +626,8 @@ impl PixelSorterApp {
             match pixel_sorter.sort_pixels(&image, algorithm, &params) {
                 Ok(sorted_image) => {
                     self.processed_image = Some(sorted_image.clone());
-                    self.create_processed_texture(ctx, sorted_image, egui::TextureOptions::LINEAR);
+                    let filter = if self.was_cropped { egui::TextureOptions::NEAREST } else { egui::TextureOptions::LINEAR };
+                    self.create_processed_texture(ctx, sorted_image, filter);
                     self.is_processing = false;
                     self.status_message = "Processing complete!".to_string();
                 }
@@ -583,6 +651,7 @@ impl PixelSorterApp {
                 Ok(img) => {
                     let rgb_image = img.to_rgb8();
                     self.original_image = Some(rgb_image);
+                    self.was_cropped = false; // new image resets crop state
                     self.processed_image = None; // Clear any previous processed image
                     self.preview_mode = false; // Switch to editing mode when loading image
 
@@ -763,6 +832,10 @@ impl PixelSorterApp {
         self.processed_texture = None;
         self.last_camera_update = None; // Reset camera timer to immediately start fresh
         self.preview_mode = true;
+
+    // reset crop-specific state
+    self.crop_rotation = 0;
+    self.was_cropped = false;
 
         // Restart camera streaming for new session
         if let Some(ref camera) = self.camera_controller {
