@@ -348,29 +348,6 @@ impl eframe::App for PixelSorterApp {
                     ui.allocate_ui_at_rect(screen_rect, |ui| {
                         // Handle mouse interactions for crop selection
                         let response = ui.interact(screen_rect, egui::Id::new("image_interaction"), egui::Sense::click_and_drag());
-                // Show camera preview or prompt
-                if let Some(ref _camera) = self.camera_controller {
-                    if let Some(texture) = &self.camera_texture {
-                        // Fill entire window
-                        ui.allocate_ui_at_rect(screen_rect, |ui| {
-                            ui.add_sized(screen_rect.size(), egui::Image::new(texture));
-                        });
-                    } else {
-                        ui.centered_and_justified(|ui| {
-                            ui.label("Initializing camera...");
-                        });
-                    }
-                } else {
-                    ui.centered_and_justified(|ui| {
-                        ui.label("No camera available - Load an image to begin");
-                    });
-                }
-            } else {
-                // Show processed image with zoom and crop support
-                if let Some(texture) = self.processed_texture.clone() {
-                    ui.allocate_ui_at_rect(screen_rect, |ui| {
-                        // Handle mouse interactions for crop selection
-                        let response = ui.interact(screen_rect, egui::Id::new("image_interaction"), egui::Sense::click_and_drag());
 
                         if self.crop_mode {
                             // Corner/center drag interaction for a movable/resizable crop rectangle
