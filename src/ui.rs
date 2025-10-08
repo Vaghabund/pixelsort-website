@@ -201,15 +201,42 @@ impl eframe::App for PixelSorterApp {
                             // No panning needed without zoom
                         }
 
-                        // Display the image filling the entire screen (force stretch to rect)
-                        // Use painter.image with UV [0,0]-[1,1] to ensure the texture is stretched
-                        // to the full screen rect, which zooms small cropped images to fill the area.
-                        ui.painter().image(
-                            texture.id(),
-                            screen_rect, // destination rect
-                            egui::Rect::from_min_max(egui::pos2(0.0, 0.0), egui::pos2(1.0, 1.0)), // full uv
-                            egui::Color32::WHITE,
-                        );
+                        // Display the image while preserving aspect ratio. Compute the largest
+                        // scale that fits the image inside the screen rect (no stretching),
+                        // center it and draw. This zooms small cropped images as much as
+                        // possible without changing aspect ratio.
+                        if let Some(ref img) = self.processed_image {
+                            let img_w = img.width() as f32;
+                            let img_h = img.height() as f32;
+                            let screen_w = screen_rect.width();
+                            let screen_h = screen_rect.height();
+
+                            // scale to fit (contain) - largest uniform scale where both dims <= screen
+                            let scale = (screen_w / img_w).min(screen_h / img_h);
+
+                            let dest_w = img_w * scale;
+                            let dest_h = img_h * scale;
+
+                            let center = screen_rect.center();
+                            let dest_min = egui::pos2(center.x - dest_w / 2.0, center.y - dest_h / 2.0);
+                            let dest_max = egui::pos2(center.x + dest_w / 2.0, center.y + dest_h / 2.0);
+                            let dest_rect = egui::Rect::from_min_max(dest_min, dest_max);
+
+                            ui.painter().image(
+                                texture.id(),
+                                dest_rect,
+                                egui::Rect::from_min_max(egui::pos2(0.0, 0.0), egui::pos2(1.0, 1.0)),
+                                egui::Color32::WHITE,
+                            );
+                        } else {
+                            // Fallback: stretch to full screen if we don't have image dimensions
+                            ui.painter().image(
+                                texture.id(),
+                                screen_rect,
+                                egui::Rect::from_min_max(egui::pos2(0.0, 0.0), egui::pos2(1.0, 1.0)),
+                                egui::Color32::WHITE,
+                            );
+                        }
 
                         // Draw crop rectangle overlay
                         if let Some(crop_rect) = self.crop_rect {
