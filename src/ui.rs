@@ -328,9 +328,9 @@ impl eframe::App for PixelSorterApp {
         // Right-side area: image display fills remaining space
         egui::CentralPanel::default().show(ctx, |ui| {
             let screen_rect = ui.max_rect();
-            // Fill with image or prompt
+
             if self.preview_mode {
-                // Show camera preview or prompt
+                // Camera preview
                 if let Some(ref _camera) = self.camera_controller {
                     if let Some(texture) = &self.camera_texture {
                         ui.allocate_ui_at_rect(screen_rect, |ui| {
@@ -343,30 +343,7 @@ impl eframe::App for PixelSorterApp {
                     ui.centered_and_justified(|ui| { ui.label("No camera available - Load an image to begin"); });
                 }
             } else {
-                // Show processed image with zoom and crop support
-                if let Some(texture) = self.processed_texture.clone() {
-                    ui.allocate_ui_at_rect(screen_rect, |ui| {
-                        // Handle mouse interactions for crop selection
-                        let response = ui.interact(screen_rect, egui::Id::new("image_interaction"), egui::Sense::click_and_drag());
-                // Show camera preview or prompt
-                if let Some(ref _camera) = self.camera_controller {
-                    if let Some(texture) = &self.camera_texture {
-                        // Fill entire window
-                        ui.allocate_ui_at_rect(screen_rect, |ui| {
-                            ui.add_sized(screen_rect.size(), egui::Image::new(texture));
-                        });
-                    } else {
-                        ui.centered_and_justified(|ui| {
-                            ui.label("Initializing camera...");
-                        });
-                    }
-                } else {
-                    ui.centered_and_justified(|ui| {
-                        ui.label("No camera available - Load an image to begin");
-                    });
-                }
-            } else {
-                // Show processed image with zoom and crop support
+                // Processed image area with crop interactions
                 if let Some(texture) = self.processed_texture.clone() {
                     ui.allocate_ui_at_rect(screen_rect, |ui| {
                         // Handle mouse interactions for crop selection
@@ -510,8 +487,6 @@ impl eframe::App for PixelSorterApp {
                                 self.drag_start_rect = None;
                                 self.selection_start = None;
                             }
-                        } else {
-                            // No panning needed without zoom
                         }
 
                         // Display the image while preserving aspect ratio. Compute the largest
