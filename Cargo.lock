@@ -2772,7 +2772,6 @@ dependencies = [
  "log",
  "nalgebra 0.32.6",
  "rfd",
- "rppal",
  "serde",
  "thiserror",
  "tokio",
@@ -3071,15 +3070,6 @@ dependencies = [
  "wasm-bindgen-futures",
  "web-sys",
  "windows 0.44.0",
-]
-
-[[package]]
-name = "rppal"
-version = "0.14.1"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "612e1a22e21f08a246657c6433fe52b773ae43d07c9ef88ccfc433cc8683caba"
-dependencies = [
- "libc",
 ]
 
 [[package]]

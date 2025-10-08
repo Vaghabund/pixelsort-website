@@ -2,7 +2,7 @@
 use anyhow::{Context, Result};
 use image::{ImageBuffer, Rgb, RgbImage};
 use std::path::{Path, PathBuf};
-use log::info;
+use log::{info, debug};
 
 pub struct ImageProcessor {
     supported_formats: Vec<&'static str>,
@@ -43,14 +43,14 @@ impl ImageProcessor {
 
         // Resize if too large
         if rgb_img.width() > self.max_dimensions.0 || rgb_img.height() > self.max_dimensions.1 {
-            info!("Resizing large image from {}x{} to fit within {}x{}", 
+            debug!("Resizing large image from {}x{} to fit within {}x{}", 
                 rgb_img.width(), rgb_img.height(), 
                 self.max_dimensions.0, self.max_dimensions.1);
             
             rgb_img = self.resize_to_fit(&rgb_img, self.max_dimensions.0, self.max_dimensions.1);
         }
 
-        info!("Successfully loaded image: {}x{}", rgb_img.width(), rgb_img.height());
+    debug!("Successfully loaded image: {}x{}", rgb_img.width(), rgb_img.height());
         Ok(rgb_img)
     }
 
@@ -67,7 +67,7 @@ impl ImageProcessor {
         image.save(path)
             .with_context(|| format!("Failed to save image to {}", path.display()))?;
 
-        info!("Image saved successfully to {}", path.display());
+    debug!("Image saved successfully to {}", path.display());
         Ok(())
     }
 
@@ -104,30 +104,30 @@ impl ImageProcessor {
         let gradient_img = self.create_gradient_image(400, 300);
         gradient_img.save(&gradient_path)?;
         created_files.push(gradient_path);
-        info!("Created gradient sample image");
+    debug!("Created gradient sample image");
 
         // Create noise sample
         let noise_path = output_dir.join("noise_sample.png");
         let noise_img = self.create_noise_image(400, 300);
         noise_img.save(&noise_path)?;
         created_files.push(noise_path);
-        info!("Created noise sample image");
+    debug!("Created noise sample image");
 
         // Create geometric pattern sample
         let pattern_path = output_dir.join("pattern_sample.png");
         let pattern_img = self.create_pattern_image(400, 300);
         pattern_img.save(&pattern_path)?;
         created_files.push(pattern_path);
-        info!("Created pattern sample image");
+    debug!("Created pattern sample image");
 
         // Create color bands sample
         let bands_path = output_dir.join("bands_sample.png");
         let bands_img = self.create_color_bands_image(400, 300);
         bands_img.save(&bands_path)?;
         created_files.push(bands_path);
-        info!("Created color bands sample image");
+    debug!("Created color bands sample image");
 
-        info!("Created {} sample images in {}", created_files.len(), output_dir.display());
+    debug!("Created {} sample images in {}", created_files.len(), output_dir.display());
         Ok(created_files)
     }
 
@@ -262,7 +262,7 @@ impl ImageProcessor {
 
     pub fn set_max_dimensions(&mut self, width: u32, height: u32) {
         self.max_dimensions = (width, height);
-        info!("Updated max image dimensions to {}x{}", width, height);
+    debug!("Updated max image dimensions to {}x{}", width, height);
     }
 }
 

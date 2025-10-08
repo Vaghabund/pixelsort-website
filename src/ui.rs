@@ -177,8 +177,8 @@ impl eframe::App for PixelSorterApp {
                 
                 // Algorithm and parameters
                 ui.vertical(|ui| {
-                    // Algorithm and parameters
-                    ui.horizontal(|ui| {
+                    // Algorithm and parameters (stacked vertically)
+                    ui.vertical(|ui| {
                         ui.label("Algorithm:");
                         egui::ComboBox::from_id_source("sorting_algorithm")
                             .selected_text(self.current_algorithm.name())
@@ -189,8 +189,7 @@ impl eframe::App for PixelSorterApp {
                                     }
                                 }
                             });
-
-                        ui.add_space(10.0);
+                        ui.add_space(6.0);
 
                         ui.label(format!("Color Tint: {:.0}°", self.sorting_params.color_tint));
                         let tint_changed = ui.add(
@@ -198,8 +197,6 @@ impl eframe::App for PixelSorterApp {
                                 .step_by(1.0)
                                 .show_value(false)
                         ).changed();
-
-                        ui.add_space(10.0);
 
                         ui.label(format!("Threshold: {:.0}", self.sorting_params.threshold));
                         let threshold_changed = ui.add(
@@ -211,12 +208,13 @@ impl eframe::App for PixelSorterApp {
                         if (tint_changed || threshold_changed) && !self.is_processing {
                             self.apply_pixel_sort(ctx);
                         }
+
                     });
 
                     ui.add_space(6.0);
 
-                    // Crop controls
-                    ui.horizontal(|ui| {
+                    // Crop controls - stacked vertically
+                    ui.vertical(|ui| {
                         if ui.button(if self.crop_mode { "Cancel Crop" } else { "Select Crop" }).clicked() {
                             self.crop_mode = !self.crop_mode;
                             if !self.crop_mode {
@@ -226,7 +224,6 @@ impl eframe::App for PixelSorterApp {
                         }
 
                         if self.crop_mode {
-                            ui.separator();
                             ui.label("Aspect Ratio:");
                             egui::ComboBox::from_id_source("crop_aspect_ratio")
                                 .selected_text(self.crop_aspect_ratio.name())
@@ -236,10 +233,9 @@ impl eframe::App for PixelSorterApp {
                                     }
                                 });
 
-                            ui.separator();
                             if ui.button("Rotate 90°").clicked() {
                                 self.crop_rotation = (self.crop_rotation + 90) % 360;
-                                // Create an immediate preview of the rotated crop (no sorting) so user sees rotation
+                                // immediate visual preview: apply rotation to current crop pixels (no sorting)
                                 if let (Some(ref original), Some(crop_rect)) = (&self.original_image, self.crop_rect) {
                                     let screen_rect = ctx.screen_rect();
                                     let image_size = original.dimensions();
@@ -274,53 +270,40 @@ impl eframe::App for PixelSorterApp {
                                             _ => cropped,
                                         };
 
-                                        // Show rotated preview (no sorting) - immediate visual feedback
                                         self.processed_image = Some(rotated.clone());
                                         self.create_processed_texture(ctx, rotated);
                                         self.was_cropped = true;
                                     }
                                 }
                             }
-                            ui.label(format!("{}°", self.crop_rotation));
-                        }
 
-                        if self.crop_mode && self.crop_rect.is_some() {
-                            ui.separator();
-                            if ui.button("Apply Crop").clicked() {
-                                self.apply_crop_and_sort(ctx);
+                            ui.label(format!("Rotation: {}°", self.crop_rotation));
+
+                            if self.crop_rect.is_some() {
+                                if ui.button("Apply Crop").clicked() {
+                                    self.apply_crop_and_sort(ctx);
+                                }
                             }
                         }
-                    });
 
-                    ui.add_space(8.0);
+                        ui.add_space(8.0);
 
-                    // Action buttons
-                    ui.horizontal(|ui| {
+                        // Action buttons stacked vertically
                         if ui.button("Process Image").clicked() && !self.is_processing {
                             self.process_image(ctx);
                         }
-
-                        ui.separator();
-
                         if ui.button("Save & Continue").clicked() {
                             self.save_and_continue_iteration(ctx);
                         }
-
-                        ui.separator();
-
                         if ui.button("Back to Camera").clicked() {
                             self.start_new_photo_session();
                         }
-
-                        ui.separator();
-
                         if ui.button("Export to USB").clicked() {
                             match self.copy_to_usb() {
                                 Ok(()) => self.status_message = "Successfully copied to USB!".to_string(),
                                 Err(e) => self.status_message = format!("USB copy failed: {}", e),
                             }
                         }
-                    });
                 });
             });
         });
@@ -607,36 +590,7 @@ impl eframe::App for PixelSorterApp {
             });
 
         // Bottom overlay with context-sensitive controls
-        egui::Area::new("bottom_controls")
-            .anchor(egui::Align2::LEFT_BOTTOM, egui::vec2(10.0, -10.0))
-            .show(ctx, |ui| {
-                ui.visuals_mut().window_fill = egui::Color32::from_black_alpha(180);
-                egui::Frame::window(&ui.style()).show(ui, |ui| {
-                    if self.preview_mode {
-                        // Camera Live View Layout
-                        ui.vertical(|ui| {
-                            ui.horizontal(|ui| {
-                                // Take Picture button
-                                let capture_button = egui::Button::new("Take Picture").min_size([140.0, 40.0].into());
-                                if ui.add_enabled(!self.is_processing, capture_button).clicked() {
-                                    self.capture_and_sort(ctx);
-                                }
-
-                                ui.separator();
-
-                                // Load Image button
-                                if ui.button("Load Image").clicked() {
-                                    self.load_image(ctx);
-                                }
-
-                                ui.separator();
-
-                                // Exit button
-                                if ui.button("Exit").clicked() {
-                                    ctx.send_viewport_cmd(egui::ViewportCommand::Close);
-                                }
-                            });
-                        });
+        // Overlays removed: all UI is on the left SidePanel now.
                     } else {
                         // Image Editing Layout
                         ui.vertical(|ui| {

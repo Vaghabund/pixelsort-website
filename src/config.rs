@@ -96,7 +96,7 @@ impl Config {
         if config_path.exists() {
             Self::load_from_file(&config_path)
         } else {
-            log::info!("Config file not found, creating default configuration");
+            log::debug!("Config file not found, creating default configuration");
             let default_config = Self::default();
             default_config.save()?;
             Ok(default_config)
@@ -110,7 +110,7 @@ impl Config {
         let config: Self = toml::from_str(&contents)
             .with_context(|| "Failed to parse configuration file")?;
         
-        log::info!("Configuration loaded from {}", path.as_ref().display());
+    log::debug!("Configuration loaded from {}", path.as_ref().display());
         Ok(config)
     }
 
@@ -131,7 +131,7 @@ impl Config {
         std::fs::write(path.as_ref(), contents)
             .with_context(|| format!("Failed to write config file: {}", path.as_ref().display()))?;
         
-        log::info!("Configuration saved to {}", path.as_ref().display());
+    log::debug!("Configuration saved to {}", path.as_ref().display());
         Ok(())
     }
 
@@ -186,7 +186,7 @@ impl Config {
             .with_context(|| format!("Failed to create save directory: {}", 
                 self.paths.default_save_dir.display()))?;
 
-        log::info!("Created necessary directories");
+    log::debug!("Created necessary directories");
         Ok(())
     }
 
@@ -219,7 +219,7 @@ impl Config {
         self.display.image_display_width = (width as f32 * 0.6) as u32;
         self.display.image_display_height = (height as f32 * 0.75) as u32;
         
-        log::info!("Updated display configuration to {}x{}", width, height);
+    log::debug!("Updated display configuration to {}x{}", width, height);
         Ok(())
     }
 }

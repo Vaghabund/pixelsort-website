@@ -179,7 +179,7 @@ impl CameraController {
         self.stream_thread = Some(stream_thread);
         self.streaming_active = true;
 
-        log::info!("Camera streaming started at {}x{} @ 30 FPS", self.preview_width, self.preview_height);
+    log::info!("Camera streaming started at {}x{} @ 30 FPS", self.preview_width, self.preview_height);
         Ok(())
     }
 
