@@ -164,12 +164,190 @@ impl eframe::App for PixelSorterApp {
 
         // Remove the panel-based layout - we'll use overlay approach instead
 
-        // Full-screen image display
+        // Layout: left controls side panel + right image area
+        egui::SidePanel::left("left_controls").resizable(true).show(ctx, |ui| {
+            ui.visuals_mut().window_fill = egui::Color32::from_black_alpha(180);
+            egui::Frame::window(&ui.style()).show(ui, |ui| {
+                ui.heading("Pixel Sorter");
+                ui.add_space(6.0);
+
+                // Reuse the previous control layout (algorithm, sliders, crop controls, action buttons)
+                // ...existing control UI...
+                // We'll insert the controls by calling a helper closure below
+                
+                // Algorithm and parameters
+                ui.vertical(|ui| {
+                    // Algorithm and parameters
+                    ui.horizontal(|ui| {
+                        ui.label("Algorithm:");
+                        egui::ComboBox::from_id_source("sorting_algorithm")
+                            .selected_text(self.current_algorithm.name())
+                            .show_ui(ui, |ui| {
+                                for &algorithm in SortingAlgorithm::all() {
+                                    if ui.selectable_value(&mut self.current_algorithm, algorithm, algorithm.name()).clicked() {
+                                        self.apply_pixel_sort(ctx);
+                                    }
+                                }
+                            });
+
+                        ui.add_space(10.0);
+
+                        ui.label(format!("Color Tint: {:.0}°", self.sorting_params.color_tint));
+                        let tint_changed = ui.add(
+                            egui::Slider::new(&mut self.sorting_params.color_tint, 0.0..=360.0)
+                                .step_by(1.0)
+                                .show_value(false)
+                        ).changed();
+
+                        ui.add_space(10.0);
+
+                        ui.label(format!("Threshold: {:.0}", self.sorting_params.threshold));
+                        let threshold_changed = ui.add(
+                            egui::Slider::new(&mut self.sorting_params.threshold, 0.0..=255.0)
+                                .step_by(1.0)
+                                .show_value(false)
+                        ).changed();
+
+                        if (tint_changed || threshold_changed) && !self.is_processing {
+                            self.apply_pixel_sort(ctx);
+                        }
+                    });
+
+                    ui.add_space(6.0);
+
+                    // Crop controls
+                    ui.horizontal(|ui| {
+                        if ui.button(if self.crop_mode { "Cancel Crop" } else { "Select Crop" }).clicked() {
+                            self.crop_mode = !self.crop_mode;
+                            if !self.crop_mode {
+                                self.crop_rect = None;
+                                self.selection_start = None;
+                            }
+                        }
+
+                        if self.crop_mode {
+                            ui.separator();
+                            ui.label("Aspect Ratio:");
+                            egui::ComboBox::from_id_source("crop_aspect_ratio")
+                                .selected_text(self.crop_aspect_ratio.name())
+                                .show_ui(ui, |ui| {
+                                    for &ratio in CropAspectRatio::all() {
+                                        ui.selectable_value(&mut self.crop_aspect_ratio, ratio, ratio.name());
+                                    }
+                                });
+
+                            ui.separator();
+                            if ui.button("Rotate 90°").clicked() {
+                                self.crop_rotation = (self.crop_rotation + 90) % 360;
+                                // Create an immediate preview of the rotated crop (no sorting) so user sees rotation
+                                if let (Some(ref original), Some(crop_rect)) = (&self.original_image, self.crop_rect) {
+                                    let screen_rect = ctx.screen_rect();
+                                    let image_size = original.dimensions();
+                                    let scale_x = image_size.0 as f32 / screen_rect.width();
+                                    let scale_y = image_size.1 as f32 / screen_rect.height();
+
+                                    let crop_min_x = (crop_rect.min.x * scale_x).max(0.0).min(image_size.0 as f32) as u32;
+                                    let crop_min_y = (crop_rect.min.y * scale_y).max(0.0).min(image_size.1 as f32) as u32;
+                                    let crop_max_x = (crop_rect.max.x * scale_x).max(0.0).min(image_size.0 as f32) as u32;
+                                    let crop_max_y = (crop_rect.max.y * scale_y).max(0.0).min(image_size.1 as f32) as u32;
+
+                                    let crop_width = crop_max_x.saturating_sub(crop_min_x);
+                                    let crop_height = crop_max_y.saturating_sub(crop_min_y);
+
+                                    if crop_width > 0 && crop_height > 0 {
+                                        let mut cropped = image::RgbImage::new(crop_width, crop_height);
+                                        for y in 0..crop_height {
+                                            for x in 0..crop_width {
+                                                let src_x = crop_min_x + x;
+                                                let src_y = crop_min_y + y;
+                                                if src_x < image_size.0 && src_y < image_size.1 {
+                                                    let pixel = original.get_pixel(src_x, src_y);
+                                                    cropped.put_pixel(x, y, *pixel);
+                                                }
+                                            }
+                                        }
+
+                                        let rotated = match self.crop_rotation {
+                                            90 => image::imageops::rotate90(&cropped),
+                                            180 => image::imageops::rotate180(&cropped),
+                                            270 => image::imageops::rotate270(&cropped),
+                                            _ => cropped,
+                                        };
+
+                                        // Show rotated preview (no sorting) - immediate visual feedback
+                                        self.processed_image = Some(rotated.clone());
+                                        self.create_processed_texture(ctx, rotated);
+                                        self.was_cropped = true;
+                                    }
+                                }
+                            }
+                            ui.label(format!("{}°", self.crop_rotation));
+                        }
+
+                        if self.crop_mode && self.crop_rect.is_some() {
+                            ui.separator();
+                            if ui.button("Apply Crop").clicked() {
+                                self.apply_crop_and_sort(ctx);
+                            }
+                        }
+                    });
+
+                    ui.add_space(8.0);
+
+                    // Action buttons
+                    ui.horizontal(|ui| {
+                        if ui.button("Process Image").clicked() && !self.is_processing {
+                            self.process_image(ctx);
+                        }
+
+                        ui.separator();
+
+                        if ui.button("Save & Continue").clicked() {
+                            self.save_and_continue_iteration(ctx);
+                        }
+
+                        ui.separator();
+
+                        if ui.button("Back to Camera").clicked() {
+                            self.start_new_photo_session();
+                        }
+
+                        ui.separator();
+
+                        if ui.button("Export to USB").clicked() {
+                            match self.copy_to_usb() {
+                                Ok(()) => self.status_message = "Successfully copied to USB!".to_string(),
+                                Err(e) => self.status_message = format!("USB copy failed: {}", e),
+                            }
+                        }
+                    });
+                });
+            });
+        });
+
+        // Right-side area: image display fills remaining space
         egui::CentralPanel::default().show(ctx, |ui| {
             let screen_rect = ui.max_rect();
-            
-            // Fill entire window with image
+            // Fill with image or prompt
             if self.preview_mode {
+                // Show camera preview or prompt
+                if let Some(ref _camera) = self.camera_controller {
+                    if let Some(texture) = &self.camera_texture {
+                        ui.allocate_ui_at_rect(screen_rect, |ui| {
+                            ui.add_sized(screen_rect.size(), egui::Image::new(texture));
+                        });
+                    } else {
+                        ui.centered_and_justified(|ui| { ui.label("Initializing camera..."); });
+                    }
+                } else {
+                    ui.centered_and_justified(|ui| { ui.label("No camera available - Load an image to begin"); });
+                }
+            } else {
+                // Show processed image with zoom and crop support
+                if let Some(texture) = self.processed_texture.clone() {
+                    ui.allocate_ui_at_rect(screen_rect, |ui| {
+                        // Handle mouse interactions for crop selection
+                        let response = ui.interact(screen_rect, egui::Id::new("image_interaction"), egui::Sense::click_and_drag());
                 // Show camera preview or prompt
                 if let Some(ref _camera) = self.camera_controller {
                     if let Some(texture) = &self.camera_texture {
