@@ -177,8 +177,8 @@ impl eframe::App for PixelSorterApp {
                 
                 // Algorithm and parameters
                 ui.vertical(|ui| {
-                    // Algorithm and parameters (stacked vertically)
-                    ui.vertical(|ui| {
+                    // Algorithm and parameters
+                    ui.horizontal(|ui| {
                         ui.label("Algorithm:");
                         egui::ComboBox::from_id_source("sorting_algorithm")
                             .selected_text(self.current_algorithm.name())
@@ -189,7 +189,8 @@ impl eframe::App for PixelSorterApp {
                                     }
                                 }
                             });
-                        ui.add_space(6.0);
+
+                        ui.add_space(10.0);
 
                         ui.label(format!("Color Tint: {:.0}°", self.sorting_params.color_tint));
                         let tint_changed = ui.add(
@@ -197,6 +198,8 @@ impl eframe::App for PixelSorterApp {
                                 .step_by(1.0)
                                 .show_value(false)
                         ).changed();
+
+                        ui.add_space(10.0);
 
                         ui.label(format!("Threshold: {:.0}", self.sorting_params.threshold));
                         let threshold_changed = ui.add(
@@ -208,13 +211,12 @@ impl eframe::App for PixelSorterApp {
                         if (tint_changed || threshold_changed) && !self.is_processing {
                             self.apply_pixel_sort(ctx);
                         }
-
                     });
 
                     ui.add_space(6.0);
 
-                    // Crop controls - stacked vertically
-                    ui.vertical(|ui| {
+                    // Crop controls
+                    ui.horizontal(|ui| {
                         if ui.button(if self.crop_mode { "Cancel Crop" } else { "Select Crop" }).clicked() {
                             self.crop_mode = !self.crop_mode;
                             if !self.crop_mode {
@@ -224,6 +226,7 @@ impl eframe::App for PixelSorterApp {
                         }
 
                         if self.crop_mode {
+                            ui.separator();
                             ui.label("Aspect Ratio:");
                             egui::ComboBox::from_id_source("crop_aspect_ratio")
                                 .selected_text(self.crop_aspect_ratio.name())
@@ -233,9 +236,10 @@ impl eframe::App for PixelSorterApp {
                                     }
                                 });
 
+                            ui.separator();
                             if ui.button("Rotate 90°").clicked() {
                                 self.crop_rotation = (self.crop_rotation + 90) % 360;
-                                // immediate visual preview: apply rotation to current crop pixels (no sorting)
+                                // Create an immediate preview of the rotated crop (no sorting) so user sees rotation
                                 if let (Some(ref original), Some(crop_rect)) = (&self.original_image, self.crop_rect) {
                                     let screen_rect = ctx.screen_rect();
                                     let image_size = original.dimensions();
@@ -270,51 +274,63 @@ impl eframe::App for PixelSorterApp {
                                             _ => cropped,
                                         };
 
+                                        // Show rotated preview (no sorting) - immediate visual feedback
                                         self.processed_image = Some(rotated.clone());
                                         self.create_processed_texture(ctx, rotated);
                                         self.was_cropped = true;
                                     }
                                 }
                             }
-
-                            ui.label(format!("Rotation: {}°", self.crop_rotation));
-
-                            if self.crop_rect.is_some() {
-                                if ui.button("Apply Crop").clicked() {
-                                    self.apply_crop_and_sort(ctx);
-                                }
-                            }
+                            ui.label(format!("{}°", self.crop_rotation));
                         }
 
-                        ui.add_space(8.0);
+                        if self.crop_mode && self.crop_rect.is_some() {
+                            ui.separator();
+                            if ui.button("Apply Crop").clicked() {
+                                self.apply_crop_and_sort(ctx);
+                            }
+                        }
+                    });
 
-                        // Action buttons stacked vertically
+                    ui.add_space(8.0);
+
+                    // Action buttons
+                    ui.horizontal(|ui| {
                         if ui.button("Process Image").clicked() && !self.is_processing {
                             self.process_image(ctx);
                         }
+
+                        ui.separator();
+
                         if ui.button("Save & Continue").clicked() {
                             self.save_and_continue_iteration(ctx);
                         }
+
+                        ui.separator();
+
                         if ui.button("Back to Camera").clicked() {
                             self.start_new_photo_session();
                         }
+
+                        ui.separator();
+
                         if ui.button("Export to USB").clicked() {
                             match self.copy_to_usb() {
                                 Ok(()) => self.status_message = "Successfully copied to USB!".to_string(),
                                 Err(e) => self.status_message = format!("USB copy failed: {}", e),
                             }
                         }
-                    });  // close ui.vertical for crop controls (line 217)
-                });  // close ui.vertical for outer controls (line 179)
-            });  // close egui::Frame::window (line 170)
-        });  // close egui::SidePanel::left (line 168)
+                    });
+                });
+            });
+        });
 
         // Right-side area: image display fills remaining space
         egui::CentralPanel::default().show(ctx, |ui| {
             let screen_rect = ui.max_rect();
-
+            // Fill with image or prompt
             if self.preview_mode {
-                // Camera preview
+                // Show camera preview or prompt
                 if let Some(ref _camera) = self.camera_controller {
                     if let Some(texture) = &self.camera_texture {
                         ui.allocate_ui_at_rect(screen_rect, |ui| {
@@ -327,7 +343,30 @@ impl eframe::App for PixelSorterApp {
                     ui.centered_and_justified(|ui| { ui.label("No camera available - Load an image to begin"); });
                 }
             } else {
-                // Processed image area with crop interactions
+                // Show processed image with zoom and crop support
+                if let Some(texture) = self.processed_texture.clone() {
+                    ui.allocate_ui_at_rect(screen_rect, |ui| {
+                        // Handle mouse interactions for crop selection
+                        let response = ui.interact(screen_rect, egui::Id::new("image_interaction"), egui::Sense::click_and_drag());
+                // Show camera preview or prompt
+                if let Some(ref _camera) = self.camera_controller {
+                    if let Some(texture) = &self.camera_texture {
+                        // Fill entire window
+                        ui.allocate_ui_at_rect(screen_rect, |ui| {
+                            ui.add_sized(screen_rect.size(), egui::Image::new(texture));
+                        });
+                    } else {
+                        ui.centered_and_justified(|ui| {
+                            ui.label("Initializing camera...");
+                        });
+                    }
+                } else {
+                    ui.centered_and_justified(|ui| {
+                        ui.label("No camera available - Load an image to begin");
+                    });
+                }
+            } else {
+                // Show processed image with zoom and crop support
                 if let Some(texture) = self.processed_texture.clone() {
                     ui.allocate_ui_at_rect(screen_rect, |ui| {
                         // Handle mouse interactions for crop selection
@@ -471,6 +510,8 @@ impl eframe::App for PixelSorterApp {
                                 self.drag_start_rect = None;
                                 self.selection_start = None;
                             }
+                        } else {
+                            // No panning needed without zoom
                         }
 
                         // Display the image while preserving aspect ratio. Compute the largest
@@ -591,7 +632,223 @@ impl eframe::App for PixelSorterApp {
             });
 
         // Bottom overlay with context-sensitive controls
-        // Overlays removed: all UI is on the left SidePanel now.
+        egui::Area::new("bottom_controls")
+            .anchor(egui::Align2::LEFT_BOTTOM, egui::vec2(10.0, -10.0))
+            .show(ctx, |ui| {
+                ui.visuals_mut().window_fill = egui::Color32::from_black_alpha(180);
+                egui::Frame::window(&ui.style()).show(ui, |ui| {
+                    if self.preview_mode {
+                        // Camera Live View Layout
+                        ui.vertical(|ui| {
+                            ui.horizontal(|ui| {
+                                // Take Picture button
+                                let capture_button = egui::Button::new("Take Picture").min_size([140.0, 40.0].into());
+                                if ui.add_enabled(!self.is_processing, capture_button).clicked() {
+                                    self.capture_and_sort(ctx);
+                                }
+
+                                ui.separator();
+
+                                // Load Image button
+                                if ui.button("Load Image").clicked() {
+                                    self.load_image(ctx);
+                                }
+
+                                ui.separator();
+
+                                // Exit button
+                                if ui.button("Exit").clicked() {
+                                    ctx.send_viewport_cmd(egui::ViewportCommand::Close);
+                                }
+                            });
+                        });
+                    } else {
+                        // Image Editing Layout
+                        ui.vertical(|ui| {
+                            // Algorithm and parameters
+                            ui.horizontal(|ui| {
+                                ui.label("Algorithm:");
+                                egui::ComboBox::from_id_source("sorting_algorithm")
+                                    .selected_text(self.current_algorithm.name())
+                                    .show_ui(ui, |ui| {
+                                        for &algorithm in SortingAlgorithm::all() {
+                                            if ui.selectable_value(&mut self.current_algorithm, algorithm, algorithm.name()).clicked() {
+                                                self.apply_pixel_sort(ctx);
+                                            }
+                                        }
+                                    });
+
+                                ui.add_space(15.0);
+
+                                // Color Tint Slider
+                                ui.label(format!("Color Tint: {:.0}°", self.sorting_params.color_tint));
+                                let tint_changed = ui.add(
+                                    egui::Slider::new(&mut self.sorting_params.color_tint, 0.0..=360.0)
+                                        .step_by(1.0)
+                                        .show_value(false)
+                                ).changed();
+
+                                ui.add_space(10.0);
+
+                                // Threshold Slider
+                                ui.label(format!("Threshold: {:.0}", self.sorting_params.threshold));
+                                let threshold_changed = ui.add(
+                                    egui::Slider::new(&mut self.sorting_params.threshold, 0.0..=255.0)
+                                        .step_by(1.0)
+                                        .show_value(false)
+                                ).changed();
+
+                                if (tint_changed || threshold_changed) && !self.is_processing {
+                                    self.apply_pixel_sort(ctx);
+                                }
+                            });
+
+                            ui.add_space(10.0);
+
+                            // Crop controls
+                            ui.horizontal(|ui| {
+                                if ui.button(if self.crop_mode { "Cancel Crop" } else { "Select Crop" }).clicked() {
+                                    self.crop_mode = !self.crop_mode;
+                                    if !self.crop_mode {
+                                        self.crop_rect = None;
+                                        self.selection_start = None;
+                                    }
+                                }
+
+                                if self.crop_mode {
+                                    ui.separator();
+                                    
+                                    // Aspect ratio selection (only visible in crop mode)
+                                    ui.label("Aspect Ratio:");
+                                    egui::ComboBox::from_id_source("crop_aspect_ratio")
+                                        .selected_text(self.crop_aspect_ratio.name())
+                                        .show_ui(ui, |ui| {
+                                            for &ratio in CropAspectRatio::all() {
+                                                ui.selectable_value(&mut self.crop_aspect_ratio, ratio, ratio.name());
+                                            }
+                                        });
+                                    ui.separator();
+
+                                    // Rotation and preview controls for crop
+                                    ui.horizontal(|ui| {
+                                        if ui.button("Rotate 90°").clicked() {
+                                            self.crop_rotation = (self.crop_rotation + 90) % 360;
+                                        }
+
+                                        if ui.button("Preview Crop").clicked() {
+                                            // Create a temporary preview by applying the crop without committing
+                                            // We'll create a processed texture from the cropped region and mark was_cropped true
+                                            if let (Some(ref original), Some(crop_rect)) = (&self.original_image, self.crop_rect) {
+                                                // Reuse apply_crop_and_sort logic but avoid replacing original_image permanently
+                                                // We'll perform the crop and create a processed texture
+                                                let screen_rect = ctx.screen_rect();
+                                                let image_size = original.dimensions();
+                                                let scale_x = image_size.0 as f32 / screen_rect.width();
+                                                let scale_y = image_size.1 as f32 / screen_rect.height();
+
+                                                let crop_min_x = (crop_rect.min.x * scale_x).max(0.0).min(image_size.0 as f32) as u32;
+                                                let crop_min_y = (crop_rect.min.y * scale_y).max(0.0).min(image_size.1 as f32) as u32;
+                                                let crop_max_x = (crop_rect.max.x * scale_x).max(0.0).min(image_size.0 as f32) as u32;
+                                                let crop_max_y = (crop_rect.max.y * scale_y).max(0.0).min(image_size.1 as f32) as u32;
+
+                                                let crop_width = crop_max_x.saturating_sub(crop_min_x);
+                                                let crop_height = crop_max_y.saturating_sub(crop_min_y);
+
+                                                if crop_width > 0 && crop_height > 0 {
+                                                    let mut cropped = image::RgbImage::new(crop_width, crop_height);
+                                                    for y in 0..crop_height {
+                                                        for x in 0..crop_width {
+                                                            let src_x = crop_min_x + x;
+                                                            let src_y = crop_min_y + y;
+                                                            if src_x < image_size.0 && src_y < image_size.1 {
+                                                                let pixel = original.get_pixel(src_x, src_y);
+                                                                cropped.put_pixel(x, y, *pixel);
+                                                            }
+                                                        }
+                                                    }
+
+                                                    // Apply rotation if needed
+                                                    let rotated = match self.crop_rotation {
+                                                        90 => image::imageops::rotate90(&cropped),
+                                                        180 => image::imageops::rotate180(&cropped),
+                                                        270 => image::imageops::rotate270(&cropped),
+                                                        _ => cropped,
+                                                    };
+
+                                                    // Apply pixel sorting to the cropped preview
+                                                    let algorithm = self.current_algorithm;
+                                                    let params = self.sorting_params.clone();
+                                                    let pixel_sorter = Arc::clone(&self.pixel_sorter);
+                                                    if let Ok(sorted_cropped) = pixel_sorter.sort_pixels(&rotated, algorithm, &params) {
+                                                        // Create a processed texture from the sorted crop and mark was_cropped true
+                                                        self.processed_image = Some(sorted_cropped.clone());
+                                                        self.create_processed_texture(ctx, sorted_cropped);
+                                                        self.was_cropped = true;
+                                                    }
+                                                }
+                                            }
+                                        }
+                                    });
+                                }
+
+                                if self.crop_mode && self.crop_rect.is_some() {
+                                    ui.separator();
+                                    if ui.button("Apply Crop").clicked() {
+                                        self.apply_crop_and_sort(ctx);
+                                    }
+                                }
+                            });
+
+                            ui.add_space(10.0);
+
+                            // Action buttons
+                            ui.horizontal(|ui| {
+                                // Process Image button
+                                if ui.button("Process Image").clicked() && !self.is_processing {
+                                    self.process_image(ctx);
+                                }
+
+                                ui.separator();
+
+                                // Save & Continue button
+                                if ui.button("Save & Continue").clicked() {
+                                    self.save_and_continue_iteration(ctx);
+                                }
+
+                                ui.separator();
+
+                                // Save As button - user can choose a location to save the processed image
+                                if ui.button("Save As...").clicked() {
+                                    self.save_image();
+                                }
+
+                                ui.separator();
+
+                                // Back to Camera button
+                                if ui.button("Back to Camera").clicked() {
+                                    self.start_new_photo_session();
+                                }
+
+                                ui.separator();
+
+                                // Export to USB button
+                                if ui.button("Export to USB").clicked() {
+                                    match self.copy_to_usb() {
+                                        Ok(()) => {
+                                            self.status_message = "Successfully copied to USB!".to_string();
+                                        }
+                                        Err(e) => {
+                                            self.status_message = format!("USB copy failed: {}", e);
+                                        }
+                                    }
+                                }
+                            });
+                        });
+                    }
+                });
+            });
+
+
 
         // High-performance 30 FPS repaints for smooth camera feed
         if self.preview_mode && self.camera_controller.is_some() && !self.is_processing {
