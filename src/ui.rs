@@ -304,9 +304,10 @@ impl eframe::App for PixelSorterApp {
                                 Err(e) => self.status_message = format!("USB copy failed: {}", e),
                             }
                         }
-                });
-            });
-        });
+                    });  // close ui.vertical for crop controls (line 217)
+                });  // close ui.vertical for outer controls (line 179)
+            });  // close egui::Frame::window (line 170)
+        });  // close egui::SidePanel::left (line 168)
 
         // Right-side area: image display fills remaining space
         egui::CentralPanel::default().show(ctx, |ui| {
