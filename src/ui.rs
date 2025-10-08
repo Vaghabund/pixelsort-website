@@ -72,6 +72,9 @@ pub struct PixelSorterApp {
     pub crop_aspect_ratio: CropAspectRatio,
     pub crop_rotation: i32, // degrees (0,90,180,270)
     pub was_cropped: bool,
+    pub crop_dragging: Option<CropDragAction>,
+    pub drag_start_pos: Option<egui::Pos2>,
+    pub drag_start_rect: Option<egui::Rect>,
 }
 
 impl PixelSorterApp {
@@ -189,17 +192,142 @@ impl eframe::App for PixelSorterApp {
                         let response = ui.interact(screen_rect, egui::Id::new("image_interaction"), egui::Sense::click_and_drag());
 
                         if self.crop_mode {
-                            // Handle crop selection with aspect ratio constraint
+                            // Corner/center drag interaction for a movable/resizable crop rectangle
+                            let pointer = response.interact_pointer_pos();
+
+                            // Helper to find if pointer near a corner
+                            let corner_hit = |rect: egui::Rect, p: egui::Pos2, tol: f32| -> Option<CropDragAction> {
+                                if (p - rect.min).length() <= tol { return Some(CropDragAction::ResizeTopLeft); }
+                                if (p - egui::pos2(rect.max.x, rect.min.y)).length() <= tol { return Some(CropDragAction::ResizeTopRight); }
+                                if (p - egui::pos2(rect.min.x, rect.max.y)).length() <= tol { return Some(CropDragAction::ResizeBottomLeft); }
+                                if (p - rect.max).length() <= tol { return Some(CropDragAction::ResizeBottomRight); }
+                                None
+                            };
+
                             if response.drag_started() {
-                                self.selection_start = Some(response.interact_pointer_pos().unwrap_or_default());
-                                self.crop_rect = None;
+                                // Start either a new crop or begin interaction with existing crop
+                                let start = pointer.unwrap_or_default();
+                                self.selection_start = Some(start);
+
+                                if let Some(rect) = self.crop_rect {
+                                    // Check if user started near a corner or center for move
+                                    if let Some(action) = corner_hit(rect, start, 16.0) {
+                                        self.crop_dragging = Some(action);
+                                        self.drag_start_pos = Some(start);
+                                        self.drag_start_rect = Some(rect);
+                                    } else if rect.contains(start) {
+                                        self.crop_dragging = Some(CropDragAction::Move);
+                                        self.drag_start_pos = Some(start);
+                                        self.drag_start_rect = Some(rect);
+                                    } else {
+                                        // started outside existing rect -> start new selection
+                                        self.crop_rect = None;
+                                        self.crop_dragging = None;
+                                    }
+                                } else {
+                                    // starting a new selection
+                                    self.crop_rect = None;
+                                    self.crop_dragging = None;
+                                }
                             } else if response.dragged() {
                                 if let Some(start) = self.selection_start {
-                                    if let Some(current) = response.interact_pointer_pos() {
-                                        let rect = self.constrain_crop_rect(start, current, screen_rect);
-                                        self.crop_rect = Some(rect);
+                                    if let Some(current) = pointer {
+                                        // If we have a drag action, perform it
+                                        if let Some(action) = self.crop_dragging {
+                                            if let (Some(spos), Some(srect)) = (self.drag_start_pos, self.drag_start_rect) {
+                                                let dx = current.x - spos.x;
+                                                let dy = current.y - spos.y;
+
+                                                match action {
+                                                    CropDragAction::Move => {
+                                                        let mut new_min = egui::pos2(srect.min.x + dx, srect.min.y + dy);
+                                                        let mut new_max = egui::pos2(srect.max.x + dx, srect.max.y + dy);
+                                                        // keep within screen
+                                                        let w = new_max.x - new_min.x;
+                                                        let h = new_max.y - new_min.y;
+                                                        if new_min.x < screen_rect.min.x { new_min.x = screen_rect.min.x; new_max.x = new_min.x + w; }
+                                                        if new_max.x > screen_rect.max.x { new_max.x = screen_rect.max.x; new_min.x = new_max.x - w; }
+                                                        if new_min.y < screen_rect.min.y { new_min.y = screen_rect.min.y; new_max.y = new_min.y + h; }
+                                                        if new_max.y > screen_rect.max.y { new_max.y = screen_rect.max.y; new_min.y = new_max.y - h; }
+                                                        self.crop_rect = Some(egui::Rect::from_min_max(new_min, new_max));
+                                                    }
+                                                    _ => {
+                                                        // Resize from corner while preserving aspect ratio
+                                                        let target_ratio = self.crop_aspect_ratio.ratio();
+                                                        // start rect pixel coords
+                                                        let smin = srect.min;
+                                                        let smax = srect.max;
+                                                        let mut min = smin;
+                                                        let mut max = smax;
+                                                        match action {
+                                                            CropDragAction::ResizeTopLeft => {
+                                                                min = egui::pos2(smin.x + dx, smin.y + dy);
+                                                            }
+                                                            CropDragAction::ResizeTopRight => {
+                                                                max = egui::pos2(smax.x + dx, smin.y + dy);
+                                                            }
+                                                            CropDragAction::ResizeBottomLeft => {
+                                                                min = egui::pos2(smin.x + dx, smax.y + dy);
+                                                            }
+                                                            CropDragAction::ResizeBottomRight => {
+                                                                max = egui::pos2(smax.x + dx, smax.y + dy);
+                                                            }
+                                                            _ => {}
+                                                        }
+
+                                                        // Compute width/height keeping aspect ratio centered on the opposite corner
+                                                        let mut width = (max.x - min.x).abs();
+                                                        let mut height = (max.y - min.y).abs();
+                                                        if width / height > target_ratio {
+                                                            width = height * target_ratio;
+                                                        } else {
+                                                            height = width / target_ratio;
+                                                        }
+
+                                                        // Reconstruct rect based on which corner was moved
+                                                        match action {
+                                                            CropDragAction::ResizeTopLeft => {
+                                                                max = srect.max;
+                                                                min = egui::pos2(max.x - width, max.y - height);
+                                                            }
+                                                            CropDragAction::ResizeTopRight => {
+                                                                min = srect.min;
+                                                                max = egui::pos2(min.x + width, min.y + height);
+                                                            }
+                                                            CropDragAction::ResizeBottomLeft => {
+                                                                min = egui::pos2(srect.min.x, srect.min.y);
+                                                                max = egui::pos2(min.x + width, min.y + height);
+                                                            }
+                                                            CropDragAction::ResizeBottomRight => {
+                                                                min = srect.min;
+                                                                max = egui::pos2(min.x + width, min.y + height);
+                                                            }
+                                                            _ => {}
+                                                        }
+
+                                                        // clamp to screen
+                                                        if min.x < screen_rect.min.x { let shift = screen_rect.min.x - min.x; min.x += shift; max.x += shift; }
+                                                        if max.x > screen_rect.max.x { let shift = max.x - screen_rect.max.x; min.x -= shift; max.x -= shift; }
+                                                        if min.y < screen_rect.min.y { let shift = screen_rect.min.y - min.y; min.y += shift; max.y += shift; }
+                                                        if max.y > screen_rect.max.y { let shift = max.y - screen_rect.max.y; min.y -= shift; max.y -= shift; }
+
+                                                        self.crop_rect = Some(egui::Rect::from_min_max(min, max));
+                                                    }
+                                                }
+                                            }
+                                        } else {
+                                            // No drag action yet: start a new selection rectangle
+                                            let rect = self.constrain_crop_rect(start, current, screen_rect);
+                                            self.crop_rect = Some(rect);
+                                        }
                                     }
                                 }
+                            } else if response.drag_released() {
+                                // finalize drag
+                                self.crop_dragging = None;
+                                self.drag_start_pos = None;
+                                self.drag_start_rect = None;
+                                self.selection_start = None;
                             }
                         } else {
                             // No panning needed without zoom
@@ -1030,4 +1158,13 @@ impl PixelSorterApp {
             egui::pos2(max_x, max_y)
         )
     }
+}
+
+#[derive(Debug, Clone, Copy, PartialEq)]
+pub enum CropDragAction {
+    Move,
+    ResizeTopLeft,
+    ResizeTopRight,
+    ResizeBottomLeft,
+    ResizeBottomRight,
 }
