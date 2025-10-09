@@ -11,6 +11,12 @@ mod pixel_sorter;
 mod ui;
 mod camera_controller;
 
+mod crop;
+mod texture;
+mod image_ops;
+mod session;
+mod camera;
+
 use crate::config::Config;
 
 use crate::image_processor::ImageProcessor;
