@@ -823,7 +823,134 @@ impl PixelSorterApp {
         }
     }
 
-    // High-performance texture update that avoids unnecessary copying
+    fn render_input_phase(&mut self, ui: &mut egui::Ui, ctx: &egui::Context) {
+        let screen_rect = ui.max_rect();
+        let button_height = 50.0;
+        let button_area = egui::Rect::from_min_size(
+            screen_rect.left_bottom() - egui::vec2(0.0, button_height),
+            egui::vec2(screen_rect.width(), button_height),
+        );
+
+        // Display camera preview or placeholder
+        if let Some(texture) = &self.camera_texture {
+            ui.allocate_ui_at_rect(screen_rect.shrink2(egui::vec2(0.0, button_height)), |ui| {
+                ui.add_sized(screen_rect.size(), egui::Image::new(texture));
+            });
+        } else {
+            ui.centered_and_justified(|ui| {
+                ui.label("No camera available - Load an image to begin");
+            });
+        }
+
+        // Buttons at the bottom
+        ui.allocate_ui_at_rect(button_area, |ui| {
+            ui.horizontal(|ui| {
+                if ui.button("Take Picture").clicked() {
+                    // Logic to capture image
+                }
+                if ui.button("Upload Image").clicked() {
+                    // Logic to upload image
+                }
+            });
+        });
+    }
+
+    fn render_editing_phase(&mut self, ui: &mut egui::Ui, ctx: &egui::Context) {
+        let screen_rect = ui.max_rect();
+        let button_height = 50.0;
+        let button_area = egui::Rect::from_min_size(
+            screen_rect.left_bottom() - egui::vec2(0.0, button_height),
+            egui::vec2(screen_rect.width(), button_height),
+        );
+
+        // Display processed image
+        if let Some(texture) = &self.processed_texture {
+            ui.allocate_ui_at_rect(screen_rect.shrink2(egui::vec2(0.0, button_height)), |ui| {
+                ui.add_sized(screen_rect.size(), egui::Image::new(texture));
+            });
+        } else {
+            ui.centered_and_justified(|ui| {
+                ui.label("No image to edit");
+            });
+        }
+
+        // Buttons at the bottom
+        ui.allocate_ui_at_rect(button_area, |ui| {
+            ui.horizontal(|ui| {
+                if ui.button("Save and Iterate").clicked() {
+                    // Logic to save and reapply pixel sort
+                }
+                if ui.button("Take New Picture").clicked() {
+                    // Logic to return to input phase
+                }
+                if ui.button("Crop").clicked() {
+                    // Logic to enter crop phase
+                }
+            });
+        });
+    }
+
+    fn render_crop_phase(&mut self, ui: &mut egui::Ui, ctx: &egui::Context) {
+        let screen_rect = ui.max_rect();
+        let button_height = 50.0;
+        let button_area = egui::Rect::from_min_size(
+            screen_rect.left_bottom() - egui::vec2(0.0, button_height),
+            egui::vec2(screen_rect.width(), button_height),
+        );
+
+        // Display crop editor
+        if let Some(texture) = &self.processed_texture {
+            ui.allocate_ui_at_rect(screen_rect.shrink2(egui::vec2(0.0, button_height)), |ui| {
+                ui.add_sized(screen_rect.size(), egui::Image::new(texture));
+                // Add crop interaction logic here
+            });
+        } else {
+            ui.centered_and_justified(|ui| {
+                ui.label("No image to crop");
+            });
+        }
+
+        // Buttons at the bottom
+        ui.allocate_ui_at_rect(button_area, |ui| {
+            ui.horizontal(|ui| {
+                if ui.button("Apply").clicked() {
+                    // Logic to apply crop and return to editing phase
+                }
+                if ui.button("Exit").clicked() {
+                    // Logic to exit crop phase without applying
+                }
+            });
+        });
+    }
+
+    pub fn update_ui(&mut self, ctx: &egui::Context) {
+        egui::CentralPanel::default().show(ctx, |ui| {
+            match self.get_current_phase() {
+                Phase::Input => self.render_input_phase(ui, ctx),
+                Phase::Editing => self.render_editing_phase(ui, ctx),
+                Phase::Crop => self.render_crop_phase(ui, ctx),
+            }
+        });
+    }
+
+    fn get_current_phase(&self) -> Phase {
+        if self.crop_mode {
+            Phase::Crop
+        } else if self.original_image.is_some() || self.processed_image.is_some() {
+            Phase::Editing
+        } else {
+            Phase::Input
+        }
+    }
+}
+
+enum Phase {
+    Input,
+    Editing,
+    Crop,
+}
+
+impl PixelSorterApp {
     fn update_camera_texture(&mut self, ctx: &egui::Context, image: &image::RgbImage) {
         let size = [image.width() as usize, image.height() as usize];
         let pixels = image.as_flat_samples();
@@ -917,7 +1044,6 @@ impl PixelSorterApp {
                                 break;
                             }
                         }
-                    }
                 }
                 if usb_found { break; }
             }
