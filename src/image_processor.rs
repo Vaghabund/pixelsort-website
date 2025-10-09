@@ -2,7 +2,7 @@
 use anyhow::{Context, Result};
 use image::{ImageBuffer, Rgb, RgbImage};
 use std::path::{Path, PathBuf};
-use log::{info, debug};
+use log::debug;
 
 pub struct ImageProcessor {
     supported_formats: Vec<&'static str>,

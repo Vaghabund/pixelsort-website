@@ -119,6 +119,9 @@ impl PixelSorterApp {
             crop_aspect_ratio: CropAspectRatio::Square,
             crop_rotation: 0,
             was_cropped: false,
+            crop_dragging: None,
+            drag_start_pos: None,
+            drag_start_rect: None,
         }
     }
 
@@ -725,7 +728,7 @@ impl PixelSorterApp {
             match pixel_sorter.sort_pixels(original, algorithm, &params) {
                 Ok(sorted_image) => {
                     self.processed_image = Some(sorted_image.clone());
-                    let filter = if self.was_cropped { egui::TextureOptions::NEAREST } else { egui::TextureOptions::LINEAR };
+                    let _filter = if self.was_cropped { egui::TextureOptions::NEAREST } else { egui::TextureOptions::LINEAR };
                     self.create_processed_texture(ctx, sorted_image);
                     
                     self.is_processing = false;
@@ -754,7 +757,7 @@ impl PixelSorterApp {
             match pixel_sorter.sort_pixels(&image, algorithm, &params) {
                 Ok(sorted_image) => {
                     self.processed_image = Some(sorted_image.clone());
-                    let filter = if self.was_cropped { egui::TextureOptions::NEAREST } else { egui::TextureOptions::LINEAR };
+                    let _filter = if self.was_cropped { egui::TextureOptions::NEAREST } else { egui::TextureOptions::LINEAR };
                     self.create_processed_texture(ctx, sorted_image);
                     self.is_processing = false;
                     self.status_message = "Processing complete!".to_string();
