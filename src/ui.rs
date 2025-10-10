@@ -69,6 +69,7 @@ pub struct PixelSorterApp {
     pub crop_aspect_ratio: CropAspectRatio,
     pub crop_rotation: i32, // degrees (0,90,180,270)
     pub was_cropped: bool,
+    pub tint_enabled: bool, // Track tint toggle state separately from slider value
 }
 
 impl PixelSorterApp {
@@ -113,6 +114,7 @@ impl PixelSorterApp {
             crop_aspect_ratio: CropAspectRatio::Square,
             crop_rotation: 0,
             was_cropped: false,
+            tint_enabled: false,
         }
     }
 
@@ -202,106 +204,22 @@ impl PixelSorterApp {
         let screen_rect = ui.max_rect();
         let control_height = 100.0;
         let button_height = 50.0;
-        let control_area = egui::Rect::from_min_size(screen_rect.min, egui::vec2(screen_rect.width(), control_height));
+        
+        // Rearranged layout: image at top, controls in middle, buttons at bottom
         let image_area = egui::Rect::from_min_size(
-            screen_rect.min + egui::vec2(0.0, control_height),
+            screen_rect.min,
             egui::vec2(screen_rect.width(), screen_rect.height() - control_height - button_height),
+        );
+        let control_area = egui::Rect::from_min_size(
+            screen_rect.min + egui::vec2(0.0, image_area.height()),
+            egui::vec2(screen_rect.width(), control_height)
         );
         let button_area = egui::Rect::from_min_size(
             screen_rect.left_bottom() - egui::vec2(0.0, button_height),
             egui::vec2(screen_rect.width(), button_height),
         );
 
-        // Controls at the top
-        ui.allocate_ui_at_rect(control_area, |ui| {
-            ui.vertical(|ui| {
-                if !self.crop_mode {
-                    // Algorithm and parameters
-                    ui.horizontal(|ui| {
-                        ui.label("Algorithm:");
-                        egui::ComboBox::from_id_source("sorting_algorithm")
-                            .selected_text(self.current_algorithm.name())
-                            .show_ui(ui, |ui| {
-                                for &algorithm in SortingAlgorithm::all() {
-                                    if ui.selectable_value(&mut self.current_algorithm, algorithm, algorithm.name()).clicked() {
-                                        self.apply_pixel_sort(ctx);
-                                    }
-                                }
-                            });
-
-                        ui.add_space(15.0);
-
-                        // Color Tint Slider
-                        ui.label(format!("Color Tint: {:.0}°", self.sorting_params.color_tint));
-                        let tint_changed = ui.add(
-                            egui::Slider::new(&mut self.sorting_params.color_tint, 0.0..=360.0)
-                                .step_by(1.0)
-                                .show_value(false)
-                        ).changed();
-
-                        ui.add_space(10.0);
-
-                        // Threshold Slider
-                        ui.label(format!("Threshold: {:.0}", self.sorting_params.threshold));
-                        let threshold_changed = ui.add(
-                            egui::Slider::new(&mut self.sorting_params.threshold, 0.0..=255.0)
-                                .step_by(1.0)
-                                .show_value(false)
-                        ).changed();
-
-                        if (tint_changed || threshold_changed) && !self.is_processing {
-                            self.apply_pixel_sort(ctx);
-                        }
-                    });
-
-                    ui.add_space(10.0);
-                }
-
-                // Crop controls
-                ui.horizontal(|ui| {
-                    if ui.button(if self.crop_mode { "Cancel Crop" } else { "Select Crop" }).clicked() {
-                        self.crop_mode = !self.crop_mode;
-                        if !self.crop_mode {
-                            self.crop_rect = None;
-                            self.selection_start = None;
-                        }
-                    }
-
-                    if self.crop_mode {
-                        ui.separator();
-
-                        ui.label("Aspect Ratio:");
-                        let aspect_changed = egui::ComboBox::from_id_source("crop_aspect_ratio")
-                            .selected_text(self.crop_aspect_ratio.name())
-                            .show_ui(ui, |ui| {
-                                for &ratio in CropAspectRatio::all() {
-                                    ui.selectable_value(&mut self.crop_aspect_ratio, ratio, ratio.name());
-                                }
-                            }).response.changed();
-                        if aspect_changed {
-                            if let Some(rect) = self.crop_rect {
-                                self.crop_rect = Some(self.constrain_crop_rect(rect.min, rect.max, ctx.screen_rect()));
-                            }
-                        }
-
-                        ui.separator();
-
-                        if ui.button("Rotate 90°").clicked() {
-                            self.crop_rotation = (self.crop_rotation + 90) % 360;
-                        }
-                    }
-
-                    if self.crop_mode && self.crop_rect.is_some() {
-                        ui.separator();
-                        if ui.button("Apply Crop").clicked() {
-                            self.apply_crop_and_sort(ctx);
-                        }
-                    }
-                });
-            });
-        });
-
-        // Display processed image
+        // Display processed image at the top
         if let Some(texture) = self.processed_texture.clone() {
             ui.allocate_ui_at_rect(image_area, |ui| {
                 ui.add_sized(image_area.size(), egui::Image::new(&texture));
@@ -367,12 +285,113 @@ impl PixelSorterApp {
                 }
             });
         } else {
-            ui.centered_and_justified(|ui| {
-                ui.label("No image to edit");
+            ui.allocate_ui_at_rect(image_area, |ui| {
+                ui.centered_and_justified(|ui| {
+                    ui.label("No image to edit");
+                });
             });
         }
 
-        // Buttons at the bottom
+        // Controls in the middle (above bottom buttons)
+        ui.allocate_ui_at_rect(control_area, |ui| {
+            ui.vertical(|ui| {
+                if !self.crop_mode {
+                    // Algorithm and parameters
+                    ui.horizontal(|ui| {
+                            ui.label("Algorithm:");
+                            if ui.button(self.current_algorithm.name()).clicked() {
+                                let all = SortingAlgorithm::all();
+                                let idx = all.iter().position(|&a| a == self.current_algorithm).unwrap_or(0);
+                                let next_idx = (idx + 1) % all.len();
+                                self.current_algorithm = all[next_idx];
+                                self.apply_pixel_sort(ctx);
+                            }
+
+                        ui.add_space(15.0);
+
+                        // Color Tint Slider
+                        // Tint toggle and slider
+                        let mut tint_changed = false;
+                        let mut tint_toggled = false;
+                        ui.horizontal(|ui| {
+                            if ui.button(if self.tint_enabled { "Tint: ON" } else { "Tint: OFF" }).clicked() {
+                                self.tint_enabled = !self.tint_enabled;
+                                tint_toggled = true;
+                                if self.tint_enabled && self.sorting_params.color_tint == 0.0 {
+                                    self.sorting_params.color_tint = 180.0; // default value when enabled
+                                }
+                            }
+                            tint_changed = ui.add_enabled(
+                                self.tint_enabled,
+                                egui::Slider::new(&mut self.sorting_params.color_tint, 0.0..=360.0)
+                                    .step_by(1.0)
+                                    .show_value(false)
+                            ).changed();
+                        });
+
+                        ui.add_space(10.0);
+
+                        // Threshold Slider
+                        ui.label(format!("Threshold: {:.0}", self.sorting_params.threshold));
+                        let threshold_changed = ui.add(
+                            egui::Slider::new(&mut self.sorting_params.threshold, 0.0..=255.0)
+                                .step_by(1.0)
+                                .show_value(false)
+                        ).changed();
+
+                        if (tint_changed || tint_toggled || threshold_changed) && !self.is_processing {
+                            self.apply_pixel_sort(ctx);
+                        }
+                    });
+
+                    ui.add_space(10.0);
+                }
+
+                // Crop controls
+                ui.horizontal(|ui| {
+                    if ui.button(if self.crop_mode { "Cancel Crop" } else { "Select Crop" }).clicked() {
+                        self.crop_mode = !self.crop_mode;
+                        if !self.crop_mode {
+                            self.crop_rect = None;
+                            self.selection_start = None;
+                        }
+                    }
+
+                    if self.crop_mode {
+                        ui.separator();
+
+                        ui.label("Aspect Ratio:");
+                        let aspect_changed = egui::ComboBox::from_id_source("crop_aspect_ratio")
+                            .selected_text(self.crop_aspect_ratio.name())
+                            .show_ui(ui, |ui| {
+                                for &ratio in CropAspectRatio::all() {
+                                    ui.selectable_value(&mut self.crop_aspect_ratio, ratio, ratio.name());
+                                }
+                            }).response.changed();
+                        if aspect_changed {
+                            if let Some(rect) = self.crop_rect {
+                                self.crop_rect = Some(self.constrain_crop_rect(rect.min, rect.max, ctx.screen_rect()));
+                            }
+                        }
+
+                        ui.separator();
+
+                        if ui.button("Rotate 90°").clicked() {
+                            self.crop_rotation = (self.crop_rotation + 90) % 360;
+                        }
+                    }
+
+                    if self.crop_mode && self.crop_rect.is_some() {
+                        ui.separator();
+                        if ui.button("Apply Crop").clicked() {
+                            self.apply_crop_and_sort(ctx);
+                        }
+                    }
+                });
+            });
+        });
+
+        // Main control buttons at the bottom
         ui.allocate_ui_at_rect(button_area, |ui| {
             ui.horizontal(|ui| {
                 if ui.button("Save & Continue").clicked() {

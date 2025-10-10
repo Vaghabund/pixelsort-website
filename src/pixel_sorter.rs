@@ -80,9 +80,7 @@ impl PixelSorter {
             self.apply_hue_shift(&mut result, params.hue_shift);
         }
         
-        if params.color_tint != 0.0 {
-            self.apply_color_tint(&mut result, params.color_tint, params.tint_strength);
-        }
+        // Tint is now only applied as a display filter, not during pixel sorting
 
         match algorithm {
             SortingAlgorithm::Horizontal => self.sort_horizontal(&mut result, params),
@@ -317,10 +315,8 @@ impl PixelSorter {
 
     fn apply_color_tint(&self, image: &mut RgbImage, tint_hue: f32, strength: f32) {
         let (width, height) = image.dimensions();
-        
         // Convert tint hue to RGB color
-        let tint_color = self.hue_to_rgb(tint_hue);
-        
+        let tint_color = hue_to_rgb_pixel(tint_hue);
         for y in 0..height {
             for x in 0..width {
                 let pixel = image.get_pixel(x, y);
@@ -328,37 +324,6 @@ impl PixelSorter {
                 image.put_pixel(x, y, tinted_pixel);
             }
         }
-    }
-
-    fn hue_to_rgb(&self, hue: f32) -> Rgb<u8> {
-        // Create a saturated color from the hue
-        let h = ((hue % 360.0) + 360.0) % 360.0; // Normalize to 0-360
-        let s = 1.0; // Full saturation
-        let v = 1.0; // Full brightness
-
-        let c = v * s;
-        let x = c * (1.0 - ((h / 60.0) % 2.0 - 1.0).abs());
-        let m = v - c;
-
-        let (r_prime, g_prime, b_prime) = if h < 60.0 {
-            (c, x, 0.0)
-        } else if h < 120.0 {
-            (x, c, 0.0)
-        } else if h < 180.0 {
-            (0.0, c, x)
-        } else if h < 240.0 {
-            (0.0, x, c)
-        } else if h < 300.0 {
-            (x, 0.0, c)
-        } else {
-            (c, 0.0, x)
-        };
-
-        let r = ((r_prime + m) * 255.0).round() as u8;
-        let g = ((g_prime + m) * 255.0).round() as u8;
-        let b = ((b_prime + m) * 255.0).round() as u8;
-
-        Rgb([r, g, b])
     }
 
     fn blend_with_tint(&self, original: &Rgb<u8>, tint: &Rgb<u8>, strength: f32) -> Rgb<u8> {
@@ -403,6 +368,43 @@ impl PixelSorter {
             (final_b * 255.0).round() as u8,
         ])
     }
+}
+
+/// Convert a hue value (0-360) to RGB (u8, u8, u8)
+pub fn hue_to_rgb(hue: f32) -> (u8, u8, u8) {
+    let h = ((hue % 360.0) + 360.0) % 360.0; // Normalize to 0-360
+    let s = 1.0; // Full saturation
+    let v = 1.0; // Full brightness
+
+    let c = v * s;
+    let x = c * (1.0 - ((h / 60.0) % 2.0 - 1.0).abs());
+    let m = v - c;
+
+    let (r_prime, g_prime, b_prime) = if h < 60.0 {
+        (c, x, 0.0)
+    } else if h < 120.0 {
+        (x, c, 0.0)
+    } else if h < 180.0 {
+        (0.0, c, x)
+    } else if h < 240.0 {
+        (0.0, x, c)
+    } else if h < 300.0 {
+        (x, 0.0, c)
+    } else {
+        (c, 0.0, x)
+    };
+
+    let r = ((r_prime + m) * 255.0).round() as u8;
+    let g = ((g_prime + m) * 255.0).round() as u8;
+    let b = ((b_prime + m) * 255.0).round() as u8;
+
+    (r, g, b)
+}
+
+/// Convert a hue value (0-360) to RGB image::Rgb<u8>
+pub fn hue_to_rgb_pixel(hue: f32) -> image::Rgb<u8> {
+    let (r, g, b) = hue_to_rgb(hue);
+    image::Rgb([r, g, b])
 }
 
 #[cfg(test)]
