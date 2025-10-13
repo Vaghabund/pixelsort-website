@@ -10,6 +10,31 @@ pub enum SortingAlgorithm {
     Diagonal,
 }
 
+#[derive(Debug, Clone, Copy, PartialEq)]
+pub enum SortMode {
+    Brightness,
+    Black,
+    White,
+}
+
+impl SortMode {
+    pub fn all() -> &'static [SortMode] {
+        &[SortMode::Brightness, SortMode::Black, SortMode::White]
+    }
+    pub fn name(&self) -> &'static str {
+        match self {
+            SortMode::Brightness => "Brightness",
+            SortMode::Black => "Black",
+            SortMode::White => "White",
+        }
+    }
+    pub fn next(&self) -> SortMode {
+        let all = Self::all();
+        let idx = all.iter().position(|x| x == self).unwrap();
+        all[(idx + 1) % all.len()]
+    }
+}
+
 impl std::fmt::Display for SortingAlgorithm {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         write!(f, "{}", self.name())
@@ -46,6 +71,7 @@ pub struct SortingParameters {
     pub hue_shift: f32,
     pub color_tint: f32,
     pub tint_strength: f32,
+    pub sort_mode: SortMode,
 }
 
 impl Default for SortingParameters {
@@ -55,6 +81,7 @@ impl Default for SortingParameters {
             hue_shift: 0.0,
             color_tint: 0.0,
             tint_strength: 0.3,
+            sort_mode: SortMode::Brightness,
         }
     }
 }
@@ -93,19 +120,15 @@ impl PixelSorter {
 
     fn sort_horizontal(&self, image: &mut RgbImage, params: &SortingParameters) {
         let (width, height) = image.dimensions();
-        
         for y in 0..height {
             let row_pixels: Vec<(usize, Rgb<u8>)> = (0..width)
                 .map(|x| (x as usize, *image.get_pixel(x, y)))
                 .collect();
-
             let intervals = self.find_intervals(&row_pixels, params.threshold);
-            
             for (start, end) in intervals {
                 if end - start > 1 {
                     let mut segment: Vec<_> = row_pixels[start..end].iter().map(|(_, pixel)| *pixel).collect();
-                    segment.sort_by(|a, b| self.pixel_brightness(a).partial_cmp(&self.pixel_brightness(b)).unwrap_or(Ordering::Equal));
-                    
+                    segment.sort_by(|a, b| self.sort_key(a, params.sort_mode).cmp(&self.sort_key(b, params.sort_mode)));
                     for (i, &pixel) in segment.iter().enumerate() {
                         image.put_pixel((start + i) as u32, y, pixel);
                     }
@@ -116,19 +139,15 @@ impl PixelSorter {
 
     fn sort_vertical(&self, image: &mut RgbImage, params: &SortingParameters) {
         let (width, height) = image.dimensions();
-        
         for x in 0..width {
             let col_pixels: Vec<(usize, Rgb<u8>)> = (0..height)
                 .map(|y| (y as usize, *image.get_pixel(x, y)))
                 .collect();
-
             let intervals = self.find_intervals(&col_pixels, params.threshold);
-            
             for (start, end) in intervals {
                 if end - start > 1 {
                     let mut segment: Vec<_> = col_pixels[start..end].iter().map(|(_, pixel)| *pixel).collect();
-                    segment.sort_by(|a, b| self.pixel_brightness(a).partial_cmp(&self.pixel_brightness(b)).unwrap_or(Ordering::Equal));
-                    
+                    segment.sort_by(|a, b| self.sort_key(a, params.sort_mode).cmp(&self.sort_key(b, params.sort_mode)));
                     for (i, &pixel) in segment.iter().enumerate() {
                         image.put_pixel(x, (start + i) as u32, pixel);
                     }
@@ -140,45 +159,46 @@ impl PixelSorter {
     fn sort_diagonal(&self, image: &mut RgbImage, params: &SortingParameters) {
         let (width, height) = image.dimensions();
         let (w, h) = (width as i32, height as i32);
-        
-        // Sort main diagonals
         for offset in -h..w {
             let mut diagonal_pixels = Vec::new();
-            
             if offset >= 0 {
-                // Upper diagonals
                 for i in 0..std::cmp::min(h, w - offset) {
                     let x = (i + offset) as u32;
                     let y = i as u32;
                     diagonal_pixels.push(((x, y), *image.get_pixel(x, y)));
                 }
             } else {
-                // Lower diagonals
                 for i in 0..std::cmp::min(w, h + offset) {
                     let x = i as u32;
                     let y = (i - offset) as u32;
                     diagonal_pixels.push(((x, y), *image.get_pixel(x, y)));
                 }
             }
-
             if diagonal_pixels.len() <= 1 {
                 continue;
             }
-
             let pixel_values: Vec<_> = diagonal_pixels.iter().map(|(_, pixel)| *pixel).collect();
             let intervals = self.find_intervals_from_pixels(&pixel_values, params.threshold);
-            
             for (start, end) in intervals {
                 if end - start > 1 {
                     let mut segment: Vec<_> = pixel_values[start..end].to_vec();
-                    segment.sort_by(|a, b| self.pixel_brightness(a).partial_cmp(&self.pixel_brightness(b)).unwrap_or(Ordering::Equal));
-                    
+                    segment.sort_by(|a, b| self.sort_key(a, params.sort_mode).cmp(&self.sort_key(b, params.sort_mode)));
                     for (i, &pixel) in segment.iter().enumerate() {
                         let ((x, y), _) = diagonal_pixels[start + i];
                         image.put_pixel(x, y, pixel);
                     }
                 }
             }
+        }
+    }
+    fn sort_key(&self, pixel: &Rgb<u8>, mode: SortMode) -> u8 {
+        match mode {
+            SortMode::Brightness => {
+                let b = self.pixel_brightness(pixel);
+                b.round() as u8
+            },
+            SortMode::Black => pixel[0],
+            SortMode::White => 255 - pixel[0],
         }
     }
 

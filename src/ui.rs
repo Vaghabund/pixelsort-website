@@ -298,53 +298,63 @@ impl PixelSorterApp {
                 if !self.crop_mode {
                     // Algorithm and parameters
                     ui.horizontal(|ui| {
-                            ui.label("Algorithm:");
-                            if ui.button(self.current_algorithm.name()).clicked() {
-                                let all = SortingAlgorithm::all();
-                                let idx = all.iter().position(|&a| a == self.current_algorithm).unwrap_or(0);
-                                let next_idx = (idx + 1) % all.len();
-                                self.current_algorithm = all[next_idx];
-                                self.apply_pixel_sort(ctx);
-                            }
+                        ui.label("Algorithm:");
+                        if ui.button(self.current_algorithm.name()).clicked() {
+                            let all = crate::pixel_sorter::SortingAlgorithm::all();
+                            let idx = all.iter().position(|&a| a == self.current_algorithm).unwrap_or(0);
+                            let next_idx = (idx + 1) % all.len();
+                            self.current_algorithm = all[next_idx];
+                            self.apply_pixel_sort(ctx);
+                        }
 
                         ui.add_space(15.0);
 
-                        // Color Tint Slider
-                        // Tint toggle and slider
-                        let mut tint_changed = false;
-                        let mut tint_toggled = false;
-                        ui.horizontal(|ui| {
-                            if ui.button(if self.tint_enabled { "Tint: ON" } else { "Tint: OFF" }).clicked() {
-                                self.tint_enabled = !self.tint_enabled;
-                                tint_toggled = true;
-                                if self.tint_enabled && self.sorting_params.color_tint == 0.0 {
-                                    self.sorting_params.color_tint = 180.0; // default value when enabled
-                                }
-                            }
-                            tint_changed = ui.add_enabled(
-                                self.tint_enabled,
-                                egui::Slider::new(&mut self.sorting_params.color_tint, 0.0..=360.0)
-                                    .step_by(1.0)
-                                    .show_value(false)
-                            ).changed();
-                        });
-
-                        ui.add_space(10.0);
-
-                        // Threshold Slider
-                        ui.label(format!("Threshold: {:.0}", self.sorting_params.threshold));
-                        let threshold_changed = ui.add(
-                            egui::Slider::new(&mut self.sorting_params.threshold, 0.0..=255.0)
-                                .step_by(1.0)
-                                .show_value(false)
-                        ).changed();
-
-                        if (tint_changed || tint_toggled || threshold_changed) && !self.is_processing {
+                        // Sort Mode Button
+                        ui.label("Sort Mode:");
+                        if ui.button(self.sorting_params.sort_mode.name()).clicked() {
+                            self.sorting_params.sort_mode = self.sorting_params.sort_mode.next();
                             self.apply_pixel_sort(ctx);
                         }
                     });
 
+                    ui.add_space(15.0);
+
+                    // Color Tint Slider
+                    // Tint toggle and slider
+                    let mut tint_changed = false;
+                    let mut tint_toggled = false;
+                    ui.horizontal(|ui| {
+                        if ui.button(if self.tint_enabled { "Tint: ON" } else { "Tint: OFF" }).clicked() {
+                            self.tint_enabled = !self.tint_enabled;
+                            tint_toggled = true;
+                            if self.tint_enabled && self.sorting_params.color_tint == 0.0 {
+                                self.sorting_params.color_tint = 180.0; // default value when enabled
+                            }
+                        }
+                        tint_changed = ui.add_enabled(
+                            self.tint_enabled,
+                            egui::Slider::new(&mut self.sorting_params.color_tint, 0.0..=360.0)
+                                .step_by(1.0)
+                                .show_value(false)
+                        ).changed();
+                    });
+
                     ui.add_space(10.0);
+
+                    // Threshold Slider
+                    ui.label(format!("Threshold: {:.0}", self.sorting_params.threshold));
+                    let threshold_changed = ui.add(
+                        egui::Slider::new(&mut self.sorting_params.threshold, 0.0..=255.0)
+                            .step_by(1.0)
+                            .show_value(false)
+                    ).changed();
+
+                    if (tint_changed || tint_toggled || threshold_changed) && !self.is_processing {
+                        self.apply_pixel_sort(ctx);
+                    }
+                });
+
+                ui.add_space(10.0);
                 }
 
                 // Crop controls
