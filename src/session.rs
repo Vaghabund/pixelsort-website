@@ -110,7 +110,6 @@ impl PixelSorterApp {
 
     // reset crop-specific state
     self.crop_rotation = 0;
-    self.was_cropped = false;
 
         // Restart camera streaming for new session
         if let Some(ref camera) = self.camera_controller {

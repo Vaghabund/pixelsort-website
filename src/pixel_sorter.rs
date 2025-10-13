@@ -1,7 +1,6 @@
 #![allow(dead_code)]
 use anyhow::Result;
 use image::{Rgb, RgbImage};
-use std::cmp::Ordering;
 
 #[derive(Debug, Clone, Copy, PartialEq)]
 pub enum SortingAlgorithm {
@@ -257,6 +256,7 @@ impl PixelSorter {
             hue_shift: params.hue_shift,
             color_tint: params.color_tint,
             tint_strength: params.tint_strength,
+            sort_mode: params.sort_mode,
         };
         
         self.sort_pixels(image, algorithm, &preview_params)

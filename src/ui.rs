@@ -68,11 +68,27 @@ pub struct PixelSorterApp {
     pub selection_start: Option<egui::Pos2>,
     pub crop_aspect_ratio: CropAspectRatio,
     pub crop_rotation: i32, // degrees (0,90,180,270)
-    pub was_cropped: bool,
     pub tint_enabled: bool, // Track tint toggle state separately from slider value
 }
 
 impl PixelSorterApp {
+    fn usb_present(&self) -> bool {
+        // Check for USB mount points (Linux/Pi)
+        let usb_paths = ["/media/pi", "/media", "/mnt"];
+        for base_path in &usb_paths {
+            if let Ok(entries) = std::fs::read_dir(base_path) {
+                for entry in entries {
+                    if let Ok(entry) = entry {
+                        let usb_path = entry.path();
+                        if usb_path.is_dir() {
+                            return true;
+                        }
+                    }
+                }
+            }
+        }
+        false
+    }
     pub fn new(
         pixel_sorter: Arc<PixelSorter>,
         image_processor: Arc<RwLock<ImageProcessor>>,
@@ -105,15 +121,14 @@ impl PixelSorterApp {
             config,
             preview_mode: true,
             iteration_counter: 0,
-            current_session_folder: None,
             last_camera_update: None,
+            current_session_folder: None,
             // Crop functionality
             crop_mode: false,
             crop_rect: None,
             selection_start: None,
             crop_aspect_ratio: CropAspectRatio::Square,
             crop_rotation: 0,
-            was_cropped: false,
             tint_enabled: false,
         }
     }
@@ -124,6 +139,11 @@ impl PixelSorterApp {
 impl eframe::App for PixelSorterApp {
     fn update(&mut self, ctx: &egui::Context, _frame: &mut eframe::Frame) {
         // Camera preview is now handled directly in the update loop below
+
+        // Automatically switch to USB phase if USB is present
+        if self.usb_present() {
+            self.status_message = "USB mode".to_string();
+        }
 
         // High-performance 30 FPS camera updates - eliminate all bottlenecks
         if self.preview_mode && self.camera_controller.is_some() && !self.is_processing {
@@ -160,20 +180,18 @@ impl eframe::App for PixelSorterApp {
 }
 
 #[allow(dead_code)]
+#[derive(Debug, Clone, Copy, PartialEq)]
 enum Phase {
     Input,
     Editing,
+    SaveToUsb,
 }
 
 impl PixelSorterApp {
     #[allow(dead_code)]
     fn render_input_phase(&mut self, ui: &mut egui::Ui, ctx: &egui::Context) {
         let screen_rect = ui.max_rect();
-        let button_height = 50.0;
-        let button_area = egui::Rect::from_min_size(
-            screen_rect.left_bottom() - egui::vec2(0.0, button_height),
-            egui::vec2(screen_rect.width(), button_height),
-        );
+    let button_height = 50.0;
 
         // Display camera preview or placeholder
         if let Some(texture) = &self.camera_texture {
@@ -186,8 +204,14 @@ impl PixelSorterApp {
             });
         }
 
-        // Buttons at the bottom
-        ui.allocate_ui_at_rect(button_area, |ui| {
+        // Bottom control area split into phase row (top) and constant row (bottom)
+        let phase_row_height = button_height * 0.5;
+        let phase_row = egui::Rect::from_min_size(
+            screen_rect.left_bottom() - egui::vec2(0.0, button_height),
+            egui::vec2(screen_rect.width(), phase_row_height),
+        );
+
+        ui.allocate_ui_at_rect(phase_row, |ui| {
             ui.horizontal(|ui| {
                 if ui.button("Take Picture").clicked() {
                     self.capture_and_sort(ctx);
@@ -214,10 +238,7 @@ impl PixelSorterApp {
             screen_rect.min + egui::vec2(0.0, image_area.height()),
             egui::vec2(screen_rect.width(), control_height)
         );
-        let button_area = egui::Rect::from_min_size(
-            screen_rect.left_bottom() - egui::vec2(0.0, button_height),
-            egui::vec2(screen_rect.width(), button_height),
-        );
+        // bottom area is split into phase + constant rows; button_area removed
 
         // Display processed image at the top
         if let Some(texture) = self.processed_texture.clone() {
@@ -296,7 +317,11 @@ impl PixelSorterApp {
         ui.allocate_ui_at_rect(control_area, |ui| {
             ui.vertical(|ui| {
                 if !self.crop_mode {
-                    // Algorithm and parameters
+                    // Algorithm, Sort Mode, Tint and Threshold aligned in one row
+                    let mut tint_changed = false;
+                    let mut tint_toggled = false;
+                    let mut threshold_changed = false;
+
                     ui.horizontal(|ui| {
                         ui.label("Algorithm:");
                         if ui.button(self.current_algorithm.name()).clicked() {
@@ -315,15 +340,10 @@ impl PixelSorterApp {
                             self.sorting_params.sort_mode = self.sorting_params.sort_mode.next();
                             self.apply_pixel_sort(ctx);
                         }
-                    });
 
-                    ui.add_space(15.0);
+                        ui.add_space(15.0);
 
-                    // Color Tint Slider
-                    // Tint toggle and slider
-                    let mut tint_changed = false;
-                    let mut tint_toggled = false;
-                    ui.horizontal(|ui| {
+                        // Tint toggle + slider inline
                         if ui.button(if self.tint_enabled { "Tint: ON" } else { "Tint: OFF" }).clicked() {
                             self.tint_enabled = !self.tint_enabled;
                             tint_toggled = true;
@@ -337,24 +357,22 @@ impl PixelSorterApp {
                                 .step_by(1.0)
                                 .show_value(false)
                         ).changed();
+
+                        ui.add_space(15.0);
+
+                        // Threshold inline
+                        ui.label(format!("Threshold: {:.0}", self.sorting_params.threshold));
+                        threshold_changed = ui.add(
+                            egui::Slider::new(&mut self.sorting_params.threshold, 0.0..=255.0)
+                                .step_by(1.0)
+                                .show_value(false)
+                        ).changed();
                     });
-
-                    ui.add_space(10.0);
-
-                    // Threshold Slider
-                    ui.label(format!("Threshold: {:.0}", self.sorting_params.threshold));
-                    let threshold_changed = ui.add(
-                        egui::Slider::new(&mut self.sorting_params.threshold, 0.0..=255.0)
-                            .step_by(1.0)
-                            .show_value(false)
-                    ).changed();
 
                     if (tint_changed || tint_toggled || threshold_changed) && !self.is_processing {
                         self.apply_pixel_sort(ctx);
                     }
-                });
-
-                ui.add_space(10.0);
+                    ui.add_space(10.0);
                 }
 
                 // Crop controls
@@ -401,19 +419,40 @@ impl PixelSorterApp {
             });
         });
 
-        // Main control buttons at the bottom
-        ui.allocate_ui_at_rect(button_area, |ui| {
+        // Main control area: two rows (phase-specific row above constant row)
+        let phase_row_height = button_height * 0.5;
+        let phase_row = egui::Rect::from_min_size(
+            screen_rect.left_bottom() - egui::vec2(0.0, button_height),
+            egui::vec2(screen_rect.width(), phase_row_height),
+        );
+        let const_row = egui::Rect::from_min_size(
+            screen_rect.left_bottom() - egui::vec2(0.0, phase_row_height),
+            egui::vec2(screen_rect.width(), phase_row_height),
+        );
+
+        // Phase-specific row - left for individual phase renderers when needed
+        ui.allocate_ui_at_rect(phase_row, |ui| {
+            ui.horizontal(|ui| {
+                // Example: for Editing phase some controls already appear above; leave space for phase-specific actions
+                if self.get_current_phase() == Phase::SaveToUsb {
+                    if ui.button("Save to USB").clicked() {
+                        match self.copy_to_usb() {
+                            Ok(_) => self.status_message = "Images successfully copied to USB!".to_string(),
+                            Err(e) => self.status_message = format!("USB copy failed: {}", e),
+                        }
+                    }
+                }
+            });
+        });
+
+        // Constant row - bottom row with persistent buttons
+        ui.allocate_ui_at_rect(const_row, |ui| {
             ui.horizontal(|ui| {
                 if ui.button("Save & Continue").clicked() {
                     self.save_and_continue_iteration(ctx);
                 }
                 if ui.button("Take New Picture").clicked() {
-                    self.preview_mode = true;
-                    self.original_image = None;
-                    self.processed_image = None;
-                    self.processed_texture = None;
-                    self.crop_mode = false;
-                    self.crop_rect = None;
+                    self.start_new_photo_session();
                 }
             });
         });
@@ -425,13 +464,18 @@ impl PixelSorterApp {
             match self.get_current_phase() {
                 Phase::Input => self.render_input_phase(ui, ctx),
                 Phase::Editing => self.render_editing_phase(ui, ctx),
+                Phase::SaveToUsb => self.render_usb_save_phase(ui, ctx),
             }
         });
     }
 
     #[allow(dead_code)]
     fn get_current_phase(&self) -> Phase {
-        if self.original_image.is_some() || self.processed_image.is_some() {
+        // Example logic: if a USB is detected, switch to SaveToUsb phase
+        // This can be improved with actual USB detection logic
+        if self.status_message.contains("USB mode") {
+            Phase::SaveToUsb
+        } else if self.original_image.is_some() || self.processed_image.is_some() {
             Phase::Editing
         } else {
             Phase::Input
@@ -440,12 +484,21 @@ impl PixelSorterApp {
 }
 
 impl PixelSorterApp {
-
-
-
-
-
-
+    #[allow(dead_code)]
+    fn render_usb_save_phase(&mut self, ui: &mut egui::Ui, _ctx: &egui::Context) {
+        ui.centered_and_justified(|ui| {
+            ui.heading("Save Sorted Images to USB");
+            ui.label("Plug in a USB drive and press the button below to copy all sorted images.");
+            if ui.button("Save to USB").clicked() {
+                match self.copy_to_usb() {
+                    Ok(_) => self.status_message = "Images successfully copied to USB!".to_string(),
+                    Err(e) => self.status_message = format!("USB copy failed: {}", e),
+                }
+            }
+            ui.label(&self.status_message);
+        });
+    }
 }
+
 
 

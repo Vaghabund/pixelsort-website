@@ -104,23 +104,5 @@ impl PixelSorterApp {
         }
     }
 
-    pub fn save_image(&mut self) {
-        if let Some(ref processed) = self.processed_image {
-            if let Some(path) = rfd::FileDialog::new()
-                .add_filter("PNG Files", &["png"])
-                .save_file()
-            {
-                match processed.save(&path) {
-                    Ok(_) => {
-                        self.status_message = format!("Saved image: {}", path.display());
-                    }
-                    Err(e) => {
-                        self.status_message = format!("Failed to save image: {}", e);
-                    }
-                }
-            }
-        } else {
-            self.status_message = "No image to save".to_string();
-        }
-    }
+        // Removed unused method save_image
 }
