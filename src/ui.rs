@@ -196,7 +196,10 @@ impl PixelSorterApp {
         // Display camera preview or placeholder
         if let Some(texture) = &self.camera_texture {
             ui.allocate_ui_at_rect(screen_rect.shrink2(egui::vec2(0.0, button_height)), |ui| {
-                ui.add_sized(screen_rect.size(), egui::Image::new(texture));
+                // Size preview to available width and keep a reasonable aspect ratio (assume 16:9 if unknown)
+                let w = ui.available_width();
+                let h = w * 9.0 / 16.0;
+                ui.add_sized(egui::vec2(w, h), egui::Image::new(texture));
             });
         } else {
             ui.centered_and_justified(|ui| {
@@ -322,52 +325,109 @@ impl PixelSorterApp {
                     let mut tint_toggled = false;
                     let mut threshold_changed = false;
 
-                    ui.horizontal(|ui| {
-                        ui.label("Algorithm:");
-                        if ui.button(self.current_algorithm.name()).clicked() {
-                            let all = crate::pixel_sorter::SortingAlgorithm::all();
-                            let idx = all.iter().position(|&a| a == self.current_algorithm).unwrap_or(0);
-                            let next_idx = (idx + 1) % all.len();
-                            self.current_algorithm = all[next_idx];
-                            self.apply_pixel_sort(ctx);
-                        }
+                    // Responsive layout: if there's enough width, render in one row; otherwise stack vertically
+                    let available_width = ui.available_width();
+                    let small_screen_threshold = 600.0; // px - tune for 7" displays
+                    let _slider_max_width = (available_width - 300.0).max(80.0); // remaining space for sliders
 
-                        ui.add_space(15.0);
-
-                        // Sort Mode Button
-                        ui.label("Sort Mode:");
-                        if ui.button(self.sorting_params.sort_mode.name()).clicked() {
-                            self.sorting_params.sort_mode = self.sorting_params.sort_mode.next();
-                            self.apply_pixel_sort(ctx);
-                        }
-
-                        ui.add_space(15.0);
-
-                        // Tint toggle + slider inline
-                        if ui.button(if self.tint_enabled { "Tint: ON" } else { "Tint: OFF" }).clicked() {
-                            self.tint_enabled = !self.tint_enabled;
-                            tint_toggled = true;
-                            if self.tint_enabled && self.sorting_params.color_tint == 0.0 {
-                                self.sorting_params.color_tint = 180.0; // default value when enabled
+                    if available_width > small_screen_threshold {
+                        ui.horizontal(|ui| {
+                            ui.label("Algorithm:");
+                            if ui.button(self.current_algorithm.name()).clicked() {
+                                let all = crate::pixel_sorter::SortingAlgorithm::all();
+                                let idx = all.iter().position(|&a| a == self.current_algorithm).unwrap_or(0);
+                                let next_idx = (idx + 1) % all.len();
+                                self.current_algorithm = all[next_idx];
+                                self.apply_pixel_sort(ctx);
                             }
-                        }
-                        tint_changed = ui.add_enabled(
-                            self.tint_enabled,
-                            egui::Slider::new(&mut self.sorting_params.color_tint, 0.0..=360.0)
-                                .step_by(1.0)
-                                .show_value(false)
-                        ).changed();
 
-                        ui.add_space(15.0);
+                            ui.add_space(12.0);
 
-                        // Threshold inline
-                        ui.label(format!("Threshold: {:.0}", self.sorting_params.threshold));
-                        threshold_changed = ui.add(
-                            egui::Slider::new(&mut self.sorting_params.threshold, 0.0..=255.0)
-                                .step_by(1.0)
-                                .show_value(false)
-                        ).changed();
-                    });
+                            // Sort Mode Button
+                            ui.label("Sort Mode:");
+                            if ui.button(self.sorting_params.sort_mode.name()).clicked() {
+                                self.sorting_params.sort_mode = self.sorting_params.sort_mode.next();
+                                self.apply_pixel_sort(ctx);
+                            }
+
+                            ui.add_space(12.0);
+
+                            // Tint toggle + slider inline with limited width
+                            if ui.button(if self.tint_enabled { "Tint: ON" } else { "Tint: OFF" }).clicked() {
+                                self.tint_enabled = !self.tint_enabled;
+                                tint_toggled = true;
+                                if self.tint_enabled && self.sorting_params.color_tint == 0.0 {
+                                    self.sorting_params.color_tint = 180.0;
+                                }
+                            }
+                            let resp = ui.add_enabled(
+                                self.tint_enabled,
+                                egui::Slider::new(&mut self.sorting_params.color_tint, 0.0..=360.0)
+                                    .step_by(1.0)
+                                    .show_value(false),
+                            );
+                            tint_changed = resp.changed();
+
+                            ui.add_space(12.0);
+
+                            // Threshold inline with limited width
+                            ui.label(format!("Threshold: {:.0}", self.sorting_params.threshold));
+                            let resp = ui.add(
+                                egui::Slider::new(&mut self.sorting_params.threshold, 0.0..=255.0)
+                                    .step_by(1.0)
+                                    .show_value(false),
+                            );
+                            threshold_changed = resp.changed();
+                        });
+                    } else {
+                        // Small screen: stack controls vertically with compact sliders
+                        ui.vertical(|ui| {
+                            ui.horizontal(|ui| {
+                                ui.label("Algorithm:");
+                                if ui.button(self.current_algorithm.name()).clicked() {
+                                    let all = crate::pixel_sorter::SortingAlgorithm::all();
+                                    let idx = all.iter().position(|&a| a == self.current_algorithm).unwrap_or(0);
+                                    let next_idx = (idx + 1) % all.len();
+                                    self.current_algorithm = all[next_idx];
+                                    self.apply_pixel_sort(ctx);
+                                }
+                                ui.add_space(8.0);
+                                ui.label("Sort Mode:");
+                                if ui.button(self.sorting_params.sort_mode.name()).clicked() {
+                                    self.sorting_params.sort_mode = self.sorting_params.sort_mode.next();
+                                    self.apply_pixel_sort(ctx);
+                                }
+                            });
+
+                            ui.horizontal(|ui| {
+                                if ui.button(if self.tint_enabled { "Tint: ON" } else { "Tint: OFF" }).clicked() {
+                                    self.tint_enabled = !self.tint_enabled;
+                                    tint_toggled = true;
+                                    if self.tint_enabled && self.sorting_params.color_tint == 0.0 {
+                                        self.sorting_params.color_tint = 180.0;
+                                    }
+                                }
+                                let resp = ui.add_enabled(
+                                    self.tint_enabled,
+                                    egui::Slider::new(&mut self.sorting_params.color_tint, 0.0..=360.0)
+                                        .step_by(1.0)
+                                        .show_value(false),
+                                );
+                                tint_changed = resp.changed();
+                            });
+
+                            ui.horizontal(|ui| {
+                                ui.label(format!("Threshold: {:.0}", self.sorting_params.threshold));
+                                let resp = ui.add(
+                                    egui::Slider::new(&mut self.sorting_params.threshold, 0.0..=255.0)
+                                        .step_by(1.0)
+                                        .show_value(false),
+                                );
+                                threshold_changed = resp.changed();
+                            });
+                        });
+                    }
+
 
                     if (tint_changed || tint_toggled || threshold_changed) && !self.is_processing {
                         self.apply_pixel_sort(ctx);
@@ -419,21 +479,14 @@ impl PixelSorterApp {
             });
         });
 
-        // Main control area: two rows (phase-specific row above constant row)
-        let phase_row_height = button_height * 0.5;
-        let phase_row = egui::Rect::from_min_size(
-            screen_rect.left_bottom() - egui::vec2(0.0, button_height),
-            egui::vec2(screen_rect.width(), phase_row_height),
-        );
-        let const_row = egui::Rect::from_min_size(
-            screen_rect.left_bottom() - egui::vec2(0.0, phase_row_height),
-            egui::vec2(screen_rect.width(), phase_row_height),
-        );
+        // NOTE: phase-specific and constant bottom rows are now rendered by `update_ui` using panels
+    }
 
-        // Phase-specific row - left for individual phase renderers when needed
-        ui.allocate_ui_at_rect(phase_row, |ui| {
+    #[allow(dead_code)]
+    fn update_ui(&mut self, ctx: &egui::Context) {
+        // Phase-specific (small) bottom panel
+        egui::TopBottomPanel::bottom("phase_row").default_height(40.0).show(ctx, |ui| {
             ui.horizontal(|ui| {
-                // Example: for Editing phase some controls already appear above; leave space for phase-specific actions
                 if self.get_current_phase() == Phase::SaveToUsb {
                     if ui.button("Save to USB").clicked() {
                         match self.copy_to_usb() {
@@ -442,11 +495,14 @@ impl PixelSorterApp {
                         }
                     }
                 }
+                ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
+                    ui.label(&self.status_message);
+                });
             });
         });
 
-        // Constant row - bottom row with persistent buttons
-        ui.allocate_ui_at_rect(const_row, |ui| {
+        // Constant bottom panel (persistent buttons)
+        egui::TopBottomPanel::bottom("const_row").default_height(40.0).show(ctx, |ui| {
             ui.horizontal(|ui| {
                 if ui.button("Save & Continue").clicked() {
                     self.save_and_continue_iteration(ctx);
@@ -456,10 +512,8 @@ impl PixelSorterApp {
                 }
             });
         });
-    }
 
-    #[allow(dead_code)]
-    fn update_ui(&mut self, ctx: &egui::Context) {
+        // Central content responds to available space automatically
         egui::CentralPanel::default().show(ctx, |ui| {
             match self.get_current_phase() {
                 Phase::Input => self.render_input_phase(ui, ctx),
