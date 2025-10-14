@@ -4,9 +4,6 @@ use log::info;
 use std::sync::Arc;
 use tokio::sync::RwLock;
 
-mod config;
-
-mod image_processor;
 mod pixel_sorter;
 mod ui;
 mod camera_controller;
@@ -17,9 +14,6 @@ mod image_ops;
 mod session;
 mod camera;
 
-use crate::config::Config;
-
-use crate::image_processor::ImageProcessor;
 use crate::pixel_sorter::PixelSorter;
 use crate::ui::PixelSorterApp;
 use crate::camera_controller::CameraController;
@@ -33,15 +27,8 @@ async fn main() -> Result<()> {
     
     info!("Starting Raspberry Pi Pixel Sorter (Rust Edition)");
 
-    // Load configuration
-    let config = Config::load()?;
-    info!("Configuration loaded: {}x{} display", config.display.width, config.display.height);
-
     // Initialize components
     let pixel_sorter = Arc::new(PixelSorter::new());
-    let image_processor = Arc::new(RwLock::new(ImageProcessor::new()));
-    
-
 
     // Initialize Camera controller  
     let camera_controller = match CameraController::new() {
@@ -57,8 +44,8 @@ async fn main() -> Result<()> {
     // WINDOWED MODE: Normal window with decorations for manual resizing
     let options = eframe::NativeOptions {
         viewport: egui::ViewportBuilder::default()
-            .with_inner_size([800.0, 600.0])     // Initial size (can be resized)
-            .with_min_inner_size([400.0, 300.0]) // Minimum size
+            .with_inner_size([1024.0, 600.0])    // Initial size optimized for 7" display
+            .with_min_inner_size([800.0, 480.0]) // Minimum size for smaller displays
             .with_decorations(true)               // Show title bar, borders, and buttons
             .with_resizable(true)                 // Can be resized
             .with_close_button(true)              // Show close button
@@ -79,9 +66,7 @@ async fn main() -> Result<()> {
             
             Box::new(PixelSorterApp::new(
                 pixel_sorter,
-                image_processor,
                 camera_controller,
-                config,
             ))
         }),
     )

@@ -107,9 +107,7 @@ impl PixelSorterApp {
         self.processed_texture = None;
         self.last_camera_update = None; // Reset camera timer to immediately start fresh
         self.preview_mode = true;
-
-    // reset crop-specific state
-    self.crop_rotation = 0;
+        self.current_phase = crate::ui::Phase::Input; // Return to Input phase
 
         // Restart camera streaming for new session
         if let Some(ref camera) = self.camera_controller {
@@ -117,8 +115,6 @@ impl PixelSorterApp {
                 let _ = camera_lock.start_streaming();
             }
         }
-
-        self.status_message = "Live preview reactivated - Press button to capture!".to_string();
     }
 
     pub fn load_last_iteration_as_source(&mut self) -> Result<(), Box<dyn std::error::Error>> {
@@ -155,23 +151,13 @@ impl PixelSorterApp {
             // Extract algorithm to avoid borrow conflict
             let algorithm = self.current_algorithm;
             // Save the current iteration using the existing auto-save system
-            match self.auto_save_image(&processed, &algorithm) {
-                Ok(_saved_path) => {
-                    // Load the saved image as the new source for next iteration
-                    if let Ok(()) = self.load_last_iteration_as_source() {
-                        // Process the loaded image immediately for preview
-                        self.apply_pixel_sort(ctx);
-                        self.status_message = format!("Saved iteration {} - Ready for next edit", self.iteration_counter);
-                    } else {
-                        self.status_message = "Save successful but couldn't load for iteration".to_string();
-                    }
-                }
-                Err(_) => {
-                    self.status_message = "Failed to save iteration".to_string();
+            if let Ok(_saved_path) = self.auto_save_image(&processed, &algorithm) {
+                // Load the saved image as the new source for next iteration
+                if let Ok(()) = self.load_last_iteration_as_source() {
+                    // Process the loaded image immediately for preview
+                    self.apply_pixel_sort(ctx);
                 }
             }
-        } else {
-            self.status_message = "No processed image to save".to_string();
         }
     }
 }

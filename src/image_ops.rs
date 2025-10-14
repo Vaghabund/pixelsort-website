@@ -7,7 +7,6 @@ impl PixelSorterApp {
     pub fn apply_pixel_sort(&mut self, ctx: &egui::Context) {
         if let Some(ref original) = self.original_image.clone() {
             self.is_processing = true;
-            self.status_message = format!("Applying {} sorting...", self.current_algorithm.name());
 
             let algorithm = self.current_algorithm;
             let params = self.sorting_params.clone();
@@ -23,15 +22,11 @@ impl PixelSorterApp {
                     self.processed_image = Some(sorted.clone());
                     self.create_processed_texture(ctx, sorted);
                     self.is_processing = false;
-                    self.status_message = "Sorting completed!".to_string();
                 }
-                Err(e) => {
+                Err(_e) => {
                     self.is_processing = false;
-                    self.status_message = format!("Processing failed: {}", e);
                 }
             }
-        } else {
-            self.status_message = "No image to process".to_string();
         }
     }
 
@@ -94,11 +89,11 @@ impl PixelSorterApp {
                     self.original_image = Some(rgb_image.clone());
                     self.processed_image = Some(rgb_image.clone());
                     self.create_processed_texture(ctx, rgb_image);
-                    self.status_message = format!("Loaded image: {}", path.display());
                     self.preview_mode = false;
+                    self.current_phase = crate::ui::Phase::Edit; // Switch to edit phase
                 }
-                Err(e) => {
-                    self.status_message = format!("Failed to load image: {}", e);
+                Err(_e) => {
+                    // Failed to load, silently ignore
                 }
             }
         }

@@ -76,7 +76,7 @@ pub struct SortingParameters {
 impl Default for SortingParameters {
     fn default() -> Self {
         Self {
-            threshold: 50.0,
+            threshold: 0.0,  // Start with no threshold (sort all pixels)
             hue_shift: 0.0,
             color_tint: 0.0,
             tint_strength: 0.3,

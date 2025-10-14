@@ -5,7 +5,6 @@ impl PixelSorterApp {
     pub fn apply_crop_and_sort(&mut self, ctx: &egui::Context) {
         if let (Some(ref original), Some(crop_rect)) = (&self.original_image, self.crop_rect) {
             self.is_processing = true;
-            self.status_message = format!("Cropping and applying {} sorting...", self.current_algorithm.name());
 
             // Get screen and image dimensions for coordinate conversion
             let screen_rect = ctx.screen_rect();
@@ -45,63 +44,24 @@ impl PixelSorterApp {
                 let params = self.sorting_params.clone();
                 let pixel_sorter = Arc::clone(&self.pixel_sorter);
 
-                match pixel_sorter.sort_pixels(&cropped, algorithm, &params) {
-                    Ok(sorted_cropped) => {
-                        // Make the sorted cropped region the new full image
-                        self.original_image = Some(sorted_cropped.clone());
-                        self.processed_image = Some(sorted_cropped.clone());
-                        // Use nearest filtering for cropped images so the upscaled look is crisp
-                        self.create_processed_texture(ctx, sorted_cropped);
+                if let Ok(sorted_cropped) = pixel_sorter.sort_pixels(&cropped, algorithm, &params) {
+                    // Make the sorted cropped region the new full image
+                    self.original_image = Some(sorted_cropped.clone());
+                    self.processed_image = Some(sorted_cropped.clone());
+                    // Use nearest filtering for cropped images so the upscaled look is crisp
+                    self.create_processed_texture(ctx, sorted_cropped);
 
-                        // Exit crop mode
-                        self.crop_mode = false;
-                        self.crop_rect = None;
-                        self.selection_start = None;
-
-                        self.is_processing = false;
-                        self.status_message = "Crop processed successfully!".to_string();
-                    }
-                    Err(e) => {
-                        self.is_processing = false;
-                        self.status_message = format!("Processing failed: {}", e);
-                    }
+                    // Exit crop mode and return to Edit phase
+                    self.crop_mode = false;
+                    self.crop_rect = None;
+                    self.selection_start = None;
+                    self.current_phase = crate::ui::Phase::Edit;
                 }
+                
+                self.is_processing = false;
             } else {
                 self.is_processing = false;
-                self.status_message = "Invalid crop selection".to_string();
             }
-        } else {
-            self.status_message = "No image or crop selection available".to_string();
-        }
-    }
-
-    pub fn constrain_crop_rect(&self, start: egui::Pos2, current: egui::Pos2, _screen_rect: egui::Rect) -> egui::Rect {
-        let target_ratio = self.crop_aspect_ratio.ratio();
-
-        // Calculate the base rectangle from start to current
-        let mut width = (current.x - start.x).abs();
-        let mut height = (current.y - start.y).abs();
-
-        // Adjust dimensions to match aspect ratio
-        if width / height > target_ratio {
-            // Too wide, adjust width
-            width = height * target_ratio;
-        } else {
-            // Too tall, adjust height
-            height = width / target_ratio;
-        }
-
-        // Determine the direction of the drag
-        let center_x = (start.x + current.x) / 2.0;
-        let center_y = (start.y + current.y) / 2.0;
-
-        // Create rectangle centered on the drag center
-        let half_width = width / 2.0;
-        let half_height = height / 2.0;
-
-        egui::Rect {
-            min: egui::Pos2::new(center_x - half_width, center_y - half_height),
-            max: egui::Pos2::new(center_x + half_width, center_y + half_height),
         }
     }
 }

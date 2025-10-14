@@ -6,96 +6,89 @@ use tokio::sync::RwLock;
 
 use crate::pixel_sorter::{PixelSorter, SortingAlgorithm, SortingParameters};
 use crate::camera_controller::CameraController;
-use crate::image_processor::ImageProcessor;
-use crate::config::Config;
+
+// ============================================================================
+// CONSTANTS FOR UI STYLING - Easy to modify
+// ============================================================================
+const BUTTON_HEIGHT: f32 = 50.0;
+const BUTTON_SPACING: f32 = 10.0;
+const HANDLE_SIZE: f32 = 20.0;
+
+// ============================================================================
+// ENUMS
+// ============================================================================
 
 #[derive(Debug, Clone, Copy, PartialEq)]
-pub enum CropAspectRatio {
-    Square,     // 1:1
-    Portrait,   // 3:4
-    Landscape,  // 16:9
+pub enum Phase {
+    Input,
+    Edit,
+    Crop,
 }
 
-impl CropAspectRatio {
-    pub fn all() -> &'static [CropAspectRatio] {
-        &[
-            CropAspectRatio::Square,
-            CropAspectRatio::Portrait,
-            CropAspectRatio::Landscape,
-        ]
-    }
-
-    pub fn name(&self) -> &'static str {
-        match self {
-            CropAspectRatio::Square => "1:1",
-            CropAspectRatio::Portrait => "3:4",
-            CropAspectRatio::Landscape => "16:9",
-        }
-    }
-
-    pub fn ratio(&self) -> f32 {
-        match self {
-            CropAspectRatio::Square => 1.0,
-            CropAspectRatio::Portrait => 3.0 / 4.0,
-            CropAspectRatio::Landscape => 16.0 / 9.0,
-        }
-    }
-}
+// ============================================================================
+// MAIN APP STRUCT
+// ============================================================================
 
 pub struct PixelSorterApp {
+    // Phase management
+    pub current_phase: Phase,
+    
+    // Image data
     pub original_image: Option<image::RgbImage>,
     pub processed_image: Option<image::RgbImage>,
     pub camera_texture: Option<egui::TextureHandle>,
     pub processed_texture: Option<egui::TextureHandle>,
+    
+    // Processing
     pub pixel_sorter: Arc<PixelSorter>,
     pub current_algorithm: SortingAlgorithm,
     pub sorting_params: SortingParameters,
     pub is_processing: bool,
-    pub status_message: String,
+    
+    // Camera
     pub camera_controller: Option<Arc<RwLock<CameraController>>>,
-    #[allow(dead_code)]
-    #[allow(dead_code)]
-    pub image_processor: Arc<RwLock<ImageProcessor>>,
-    #[allow(dead_code)]
-    pub config: Config,
+    pub last_camera_update: Option<Instant>,
     pub preview_mode: bool,
+    
+    // Crop state
+    pub crop_rect: Option<egui::Rect>, // In image coordinates
+    pub drag_state: DragState,
+    pub crop_mode: bool,
+    pub selection_start: Option<egui::Pos2>,
+    
+    // Session management
     pub iteration_counter: u32,
     pub current_session_folder: Option<String>,
-    pub last_camera_update: Option<Instant>,
-    // Crop functionality
-    pub crop_mode: bool,
-    pub crop_rect: Option<egui::Rect>,
-    pub selection_start: Option<egui::Pos2>,
-    pub crop_aspect_ratio: CropAspectRatio,
-    pub crop_rotation: i32, // degrees (0,90,180,270)
-    pub tint_enabled: bool, // Track tint toggle state separately from slider value
+    
+    // Other
+    pub tint_enabled: bool,
 }
 
+#[derive(Debug, Clone, Copy, PartialEq)]
+pub enum DragState {
+    None,
+    DraggingHandle(HandlePosition),
+    MovingCrop,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq)]
+pub enum HandlePosition {
+    TopLeft,
+    TopRight,
+    BottomLeft,
+    BottomRight,
+}
+
+// ============================================================================
+// INITIALIZATION
+// ============================================================================
+
 impl PixelSorterApp {
-    fn usb_present(&self) -> bool {
-        // Check for USB mount points (Linux/Pi)
-        let usb_paths = ["/media/pi", "/media", "/mnt"];
-        for base_path in &usb_paths {
-            if let Ok(entries) = std::fs::read_dir(base_path) {
-                for entry in entries {
-                    if let Ok(entry) = entry {
-                        let usb_path = entry.path();
-                        if usb_path.is_dir() {
-                            return true;
-                        }
-                    }
-                }
-            }
-        }
-        false
-    }
     pub fn new(
         pixel_sorter: Arc<PixelSorter>,
-        image_processor: Arc<RwLock<ImageProcessor>>,
         camera_controller: Option<Arc<RwLock<CameraController>>>,
-        config: Config,
     ) -> Self {
-        // Start camera streaming immediately if camera is available
+        // Start camera streaming if available
         if let Some(ref camera) = camera_controller {
             if let Ok(mut camera_lock) = camera.try_write() {
                 let _ = camera_lock.start_streaming();
@@ -103,6 +96,7 @@ impl PixelSorterApp {
         }
 
         Self {
+            current_phase: Phase::Input,
             original_image: None,
             processed_image: None,
             camera_texture: None,
@@ -111,448 +105,646 @@ impl PixelSorterApp {
             current_algorithm: SortingAlgorithm::Horizontal,
             sorting_params: SortingParameters::default(),
             is_processing: false,
-            status_message: if camera_controller.is_some() {
-                "Live preview active - Press button to capture!".to_string()
-            } else {
-                "Ready - Load an image to begin".to_string()
-            },
             camera_controller,
-            image_processor,
-            config,
-            preview_mode: true,
-            iteration_counter: 0,
             last_camera_update: None,
-            current_session_folder: None,
-            // Crop functionality
-            crop_mode: false,
+            preview_mode: true,
             crop_rect: None,
+            drag_state: DragState::None,
+            crop_mode: false,
             selection_start: None,
-            crop_aspect_ratio: CropAspectRatio::Square,
-            crop_rotation: 0,
+            iteration_counter: 0,
+            current_session_folder: None,
             tint_enabled: false,
         }
     }
 
-    // Camera preview is now handled directly in the main update loop with throttling
+    fn usb_present(&self) -> bool {
+        let usb_paths = ["/media/pi", "/media", "/mnt"];
+        for base_path in &usb_paths {
+            if let Ok(entries) = std::fs::read_dir(base_path) {
+                for entry in entries.flatten() {
+                    if entry.path().is_dir() {
+                        return true;
+                    }
+                }
+            }
+        }
+        false
+    }
 }
+
+// ============================================================================
+// MAIN UPDATE LOOP
+// ============================================================================
 
 impl eframe::App for PixelSorterApp {
     fn update(&mut self, ctx: &egui::Context, _frame: &mut eframe::Frame) {
-        // Camera preview is now handled directly in the update loop below
-
-        // Automatically switch to USB phase if USB is present
-        if self.usb_present() {
-            self.status_message = "USB mode".to_string();
+        // Update camera preview at 30 FPS if in Input phase
+        if self.current_phase == Phase::Input && !self.is_processing {
+            self.update_camera_preview(ctx);
         }
 
-        // High-performance 30 FPS camera updates - eliminate all bottlenecks
-        if self.preview_mode && self.camera_controller.is_some() && !self.is_processing {
-            let now = Instant::now();
-            let should_update = match self.last_camera_update {
-                None => true,
-                Some(last) => now.duration_since(last) >= std::time::Duration::from_millis(33), // 30 FPS target
-            };
+        // Render UI based on current phase
+        self.render_ui(ctx);
+    }
+}
 
-            if should_update {
-                // Clone the camera controller reference to avoid borrow conflicts
-                if let Some(camera) = self.camera_controller.clone() {
-                    // Try to get camera lock without blocking the UI
-                    if let Ok(mut camera_lock) = camera.try_write() {
-                        // Use the existing synchronous method - NO CLONING
-                        match camera_lock.get_fast_preview_image() {
-                            Ok(preview_image) => {
-                                // Direct texture update without storing intermediate image
-                                self.update_camera_texture(ctx, &preview_image);
-                                self.last_camera_update = Some(now);
-                            }
-                            Err(_) => {
-                                // Skip this frame if camera is busy
-                            }
-                        }
+impl PixelSorterApp {
+    fn update_camera_preview(&mut self, ctx: &egui::Context) {
+        let now = Instant::now();
+        let should_update = match self.last_camera_update {
+            None => true,
+            Some(last) => now.duration_since(last) >= std::time::Duration::from_millis(33),
+        };
+
+        if should_update {
+            if let Some(camera) = self.camera_controller.clone() {
+                if let Ok(mut camera_lock) = camera.try_write() {
+                    if let Ok(preview_image) = camera_lock.get_fast_preview_image() {
+                        self.update_camera_texture(ctx, &preview_image);
+                        self.last_camera_update = Some(now);
                     }
-                    // If camera is locked, skip this frame - don't block UI
+                }
+            }
+        }
+    }
+
+    fn render_ui(&mut self, ctx: &egui::Context) {
+        // Calculate dynamic button zone height based on current phase
+        let button_zone_height = match self.current_phase {
+            Phase::Input => BUTTON_HEIGHT + BUTTON_SPACING * 2.0, // 1 row
+            Phase::Crop => BUTTON_HEIGHT + BUTTON_SPACING * 2.0, // 1 row
+            Phase::Edit => {
+                // 2 rows (sliders + buttons) + optional USB row
+                let base_height = (BUTTON_HEIGHT + 60.0) + BUTTON_SPACING * 3.0;
+                if self.usb_present() {
+                    base_height + BUTTON_HEIGHT + BUTTON_SPACING
+                } else {
+                    base_height
+                }
+            }
+        };
+        
+        // Button Zone at bottom
+        egui::TopBottomPanel::bottom("button_zone")
+            .exact_height(button_zone_height)
+            .show(ctx, |ui| {
+                self.render_button_zone(ui, ctx);
+            });
+
+        // Viewport in center (full screen now without status bar)
+        egui::CentralPanel::default().show(ctx, |ui| {
+            self.render_viewport(ui, ctx);
+        });
+    }
+}
+
+// ============================================================================
+// VIEWPORT RENDERING
+// ============================================================================
+
+impl PixelSorterApp {
+    fn render_viewport(&mut self, ui: &mut egui::Ui, ctx: &egui::Context) {
+        let viewport_rect = ui.max_rect();
+
+        match self.current_phase {
+            Phase::Input => self.render_input_viewport(ui, viewport_rect),
+            Phase::Edit => self.render_edit_viewport(ui, viewport_rect),
+            Phase::Crop => self.render_crop_viewport(ui, viewport_rect, ctx),
+        }
+    }
+
+    fn render_input_viewport(&mut self, ui: &mut egui::Ui, rect: egui::Rect) {
+        if let Some(texture) = &self.camera_texture {
+            let image_size = texture.size_vec2();
+            let display_size = fit_rect_in_rect(image_size, rect.size());
+            let centered_rect = center_rect_in_rect(display_size, rect);
+            
+            ui.allocate_ui_at_rect(centered_rect, |ui| {
+                ui.add(egui::Image::new(texture).fit_to_exact_size(display_size));
+            });
+        } else {
+            ui.allocate_ui_at_rect(rect, |ui| {
+                ui.centered_and_justified(|ui| {
+                    ui.label("No camera available");
+                });
+            });
+        }
+    }
+
+    fn render_edit_viewport(&mut self, ui: &mut egui::Ui, rect: egui::Rect) {
+        if let Some(texture) = &self.processed_texture {
+            let image_size = texture.size_vec2();
+            let display_size = fit_rect_in_rect(image_size, rect.size());
+            let centered_rect = center_rect_in_rect(display_size, rect);
+            
+            ui.allocate_ui_at_rect(centered_rect, |ui| {
+                ui.add(egui::Image::new(texture).fit_to_exact_size(display_size));
+            });
+        } else {
+            ui.allocate_ui_at_rect(rect, |ui| {
+                ui.centered_and_justified(|ui| {
+                    ui.label("No image");
+                });
+            });
+        }
+    }
+
+    fn render_crop_viewport(&mut self, ui: &mut egui::Ui, rect: egui::Rect, ctx: &egui::Context) {
+        if let Some(texture) = &self.processed_texture {
+            let image_size = texture.size_vec2();
+            let display_size = fit_rect_in_rect(image_size, rect.size());
+            let centered_rect = center_rect_in_rect(display_size, rect);
+            
+            // Draw image
+            ui.allocate_ui_at_rect(centered_rect, |ui| {
+                ui.add(egui::Image::new(texture).fit_to_exact_size(display_size));
+            });
+
+            // Draw overlay and crop handles
+            self.render_crop_overlay(ui, centered_rect, image_size, ctx);
+        }
+    }
+
+    fn render_crop_overlay(
+        &mut self,
+        ui: &mut egui::Ui,
+        display_rect: egui::Rect,
+        image_size: egui::Vec2,
+        _ctx: &egui::Context,
+    ) {
+        // Scale factor from image to display coordinates
+        let scale_x = display_rect.width() / image_size.x;
+        let scale_y = display_rect.height() / image_size.y;
+        let scale = scale_x.min(scale_y);
+
+        // Initialize crop rect if needed
+        if self.crop_rect.is_none() {
+            let margin = 50.0;
+            self.crop_rect = Some(egui::Rect::from_min_max(
+                egui::pos2(margin, margin),
+                egui::pos2(image_size.x - margin, image_size.y - margin),
+            ));
+        }
+
+        let crop_rect = self.crop_rect.unwrap();
+        
+        // Convert crop rect to display coordinates
+        let crop_display = egui::Rect::from_min_max(
+            display_rect.min + egui::vec2(crop_rect.min.x * scale, crop_rect.min.y * scale),
+            display_rect.min + egui::vec2(crop_rect.max.x * scale, crop_rect.max.y * scale),
+        );
+
+        // Handle interactions first (before borrowing painter)
+        self.handle_crop_interactions(ui, crop_display, display_rect, image_size, scale);
+        
+        // Now borrow painter for drawing
+        let painter = ui.painter();
+
+        // Draw grey overlay outside crop area
+        let grey = egui::Color32::from_black_alpha(180);
+        
+        // Top
+        painter.rect_filled(
+            egui::Rect::from_min_max(display_rect.min, egui::pos2(display_rect.max.x, crop_display.min.y)),
+            0.0,
+            grey,
+        );
+        // Bottom
+        painter.rect_filled(
+            egui::Rect::from_min_max(egui::pos2(display_rect.min.x, crop_display.max.y), display_rect.max),
+            0.0,
+            grey,
+        );
+        // Left
+        painter.rect_filled(
+            egui::Rect::from_min_max(
+                egui::pos2(display_rect.min.x, crop_display.min.y),
+                egui::pos2(crop_display.min.x, crop_display.max.y),
+            ),
+            0.0,
+            grey,
+        );
+        // Right
+        painter.rect_filled(
+            egui::Rect::from_min_max(
+                egui::pos2(crop_display.max.x, crop_display.min.y),
+                egui::pos2(display_rect.max.x, crop_display.max.y),
+            ),
+            0.0,
+            grey,
+        );
+
+        // Draw crop border
+        painter.rect_stroke(crop_display, 0.0, egui::Stroke::new(3.0, egui::Color32::WHITE));
+
+        // Draw handles
+        self.draw_crop_handles(painter, crop_display);
+    }
+
+    fn handle_crop_interactions(
+        &mut self,
+        ui: &mut egui::Ui,
+        crop_display: egui::Rect,
+        display_rect: egui::Rect,
+        image_size: egui::Vec2,
+        scale: f32,
+    ) {
+        let handles = [
+            (HandlePosition::TopLeft, crop_display.left_top()),
+            (HandlePosition::TopRight, crop_display.right_top()),
+            (HandlePosition::BottomLeft, crop_display.left_bottom()),
+            (HandlePosition::BottomRight, crop_display.right_bottom()),
+        ];
+
+        // Check handle interactions
+        for (handle_pos, handle_center) in handles {
+            let handle_rect = egui::Rect::from_center_size(handle_center, egui::vec2(HANDLE_SIZE, HANDLE_SIZE));
+            let response = ui.interact(handle_rect, ui.id().with(format!("{:?}", handle_pos)), egui::Sense::drag());
+            
+            if response.drag_started() {
+                self.drag_state = DragState::DraggingHandle(handle_pos);
+            }
+            
+            if response.dragged() && self.drag_state == DragState::DraggingHandle(handle_pos) {
+                if let Some(pos) = response.interact_pointer_pos() {
+                    self.update_crop_rect_from_handle(handle_pos, pos, display_rect, image_size, scale);
                 }
             }
         }
 
-        self.update_ui(ctx);
+        // Move crop area by dragging inside
+        let crop_response = ui.interact(crop_display, ui.id().with("crop_move"), egui::Sense::drag());
+        
+        if crop_response.drag_started() && self.drag_state == DragState::None {
+            self.drag_state = DragState::MovingCrop;
+        }
+        
+        if crop_response.dragged() && self.drag_state == DragState::MovingCrop {
+            let delta = crop_response.drag_delta() / scale;
+            if let Some(mut rect) = self.crop_rect {
+                rect = rect.translate(delta);
+                // Clamp to image bounds
+                rect.min.x = rect.min.x.max(0.0);
+                rect.min.y = rect.min.y.max(0.0);
+                rect.max.x = rect.max.x.min(image_size.x);
+                rect.max.y = rect.max.y.min(image_size.y);
+                self.crop_rect = Some(rect);
+            }
+        }
+
+        // Reset drag state on release
+        if ui.input(|i| i.pointer.any_released()) {
+            self.drag_state = DragState::None;
+        }
+    }
+
+    fn update_crop_rect_from_handle(
+        &mut self,
+        handle: HandlePosition,
+        screen_pos: egui::Pos2,
+        display_rect: egui::Rect,
+        image_size: egui::Vec2,
+        scale: f32,
+    ) {
+        if let Some(mut rect) = self.crop_rect {
+            // Convert screen position to image coordinates
+            let image_pos = (screen_pos - display_rect.min) / scale;
+            
+            // Update rect based on which handle
+            match handle {
+                HandlePosition::TopLeft => {
+                    rect.min = egui::pos2(
+                        image_pos.x.max(0.0).min(rect.max.x - 10.0),
+                        image_pos.y.max(0.0).min(rect.max.y - 10.0),
+                    );
+                }
+                HandlePosition::TopRight => {
+                    rect.min.y = image_pos.y.max(0.0).min(rect.max.y - 10.0);
+                    rect.max.x = image_pos.x.min(image_size.x).max(rect.min.x + 10.0);
+                }
+                HandlePosition::BottomLeft => {
+                    rect.min.x = image_pos.x.max(0.0).min(rect.max.x - 10.0);
+                    rect.max.y = image_pos.y.min(image_size.y).max(rect.min.y + 10.0);
+                }
+                HandlePosition::BottomRight => {
+                    rect.max = egui::pos2(
+                        image_pos.x.min(image_size.x).max(rect.min.x + 10.0),
+                        image_pos.y.min(image_size.y).max(rect.min.y + 10.0),
+                    );
+                }
+            }
+
+            self.crop_rect = Some(rect);
+        }
+    }
+
+    fn draw_crop_handles(&self, painter: &egui::Painter, crop_display: egui::Rect) {
+        let handle_color = egui::Color32::WHITE;
+
+        // Corner handles
+        let handles = [
+            crop_display.left_top(),
+            crop_display.right_top(),
+            crop_display.left_bottom(),
+            crop_display.right_bottom(),
+        ];
+
+        for center in handles {
+            painter.circle_filled(center, HANDLE_SIZE / 2.0, handle_color);
+            painter.circle_stroke(center, HANDLE_SIZE / 2.0, egui::Stroke::new(2.0, egui::Color32::BLACK));
+        }
     }
 }
 
-#[allow(dead_code)]
-#[derive(Debug, Clone, Copy, PartialEq)]
-enum Phase {
-    Input,
-    Editing,
-    SaveToUsb,
-}
+// ============================================================================
+// BUTTON ZONE RENDERING
+// ============================================================================
 
 impl PixelSorterApp {
-    #[allow(dead_code)]
-    fn render_input_phase(&mut self, ui: &mut egui::Ui, ctx: &egui::Context) {
-        let screen_rect = ui.max_rect();
-    let button_height = 50.0;
-
-        // Display camera preview or placeholder
-        if let Some(texture) = &self.camera_texture {
-            ui.allocate_ui_at_rect(screen_rect.shrink2(egui::vec2(0.0, button_height)), |ui| {
-                // Size preview to available width and keep a reasonable aspect ratio (assume 16:9 if unknown)
-                let w = ui.available_width();
-                let h = w * 9.0 / 16.0;
-                ui.add_sized(egui::vec2(w, h), egui::Image::new(texture));
+    fn render_button_zone(&mut self, ui: &mut egui::Ui, ctx: &egui::Context) {
+        // Use ScrollArea to ensure all buttons are accessible even on smaller screens
+        egui::ScrollArea::vertical()
+            .auto_shrink([false; 2])
+            .show(ui, |ui| {
+                ui.vertical_centered(|ui| {
+                    ui.add_space(BUTTON_SPACING);
+                    
+                    match self.current_phase {
+                        Phase::Input => self.render_input_buttons(ui, ctx),
+                        Phase::Edit => self.render_edit_buttons(ui, ctx),
+                        Phase::Crop => self.render_crop_buttons(ui, ctx),
+                    }
+                    
+                    ui.add_space(BUTTON_SPACING);
+                });
             });
-        } else {
-            ui.centered_and_justified(|ui| {
-                ui.label("No camera available - Load an image to begin");
-            });
-        }
+    }
 
-        // Bottom control area split into phase row (top) and constant row (bottom)
-        let phase_row_height = button_height * 0.5;
-        let phase_row = egui::Rect::from_min_size(
-            screen_rect.left_bottom() - egui::vec2(0.0, button_height),
-            egui::vec2(screen_rect.width(), phase_row_height),
-        );
-
-        ui.allocate_ui_at_rect(phase_row, |ui| {
-            ui.horizontal(|ui| {
-                if ui.button("Take Picture").clicked() {
-                    self.capture_and_sort(ctx);
-                }
-                if ui.button("Upload Image").clicked() {
-                    self.load_image(ctx);
-                }
-            });
+    fn render_input_buttons(&mut self, ui: &mut egui::Ui, ctx: &egui::Context) {
+        ui.horizontal(|ui| {
+            ui.spacing_mut().item_spacing.x = 0.0; // Remove default spacing
+            let total_width = ui.available_width();
+            let button_width = (total_width - BUTTON_SPACING) / 2.0;
+            
+            if ui.add_sized(egui::vec2(button_width, BUTTON_HEIGHT), egui::Button::new("Take Picture")).clicked() {
+                self.capture_and_sort(ctx);
+            }
+            
+            ui.add_space(BUTTON_SPACING);
+            
+            if ui.add_sized(egui::vec2(button_width, BUTTON_HEIGHT), egui::Button::new("Upload Image")).clicked() {
+                self.load_image(ctx);
+            }
         });
     }
 
-    #[allow(dead_code)]
-    fn render_editing_phase(&mut self, ui: &mut egui::Ui, ctx: &egui::Context) {
-        let screen_rect = ui.max_rect();
-        let control_height = 100.0;
-        let button_height = 50.0;
-        
-        // Rearranged layout: image at top, controls in middle, buttons at bottom
-        let image_area = egui::Rect::from_min_size(
-            screen_rect.min,
-            egui::vec2(screen_rect.width(), screen_rect.height() - control_height - button_height),
-        );
-        let control_area = egui::Rect::from_min_size(
-            screen_rect.min + egui::vec2(0.0, image_area.height()),
-            egui::vec2(screen_rect.width(), control_height)
-        );
-        // bottom area is split into phase + constant rows; button_area removed
-
-        // Display processed image at the top
-        if let Some(texture) = self.processed_texture.clone() {
-            ui.allocate_ui_at_rect(image_area, |ui| {
-                ui.add_sized(image_area.size(), egui::Image::new(&texture));
-
-                // Crop selection
-                let response = ui.interact(image_area, egui::Id::new("crop_selection"), egui::Sense::click_and_drag());
-                if response.clicked() || response.drag_started() {
-                    self.selection_start = response.interact_pointer_pos();
-                }
-                if response.dragged() {
-                    if let Some(start) = self.selection_start {
-                        if let Some(current) = response.interact_pointer_pos() {
-                            let _rect = egui::Rect::from_two_pos(start, current);
-                            self.crop_rect = Some(self.constrain_crop_rect(start, current, image_area));
-                        }
-                    }
-                }
-
-                // Draw crop rect and handles
-                if self.crop_mode && self.crop_rect.is_some() {
-                    let painter = ui.painter();
-                    if let Some(size) = self.processed_image.as_ref().map(|img| [img.width() as f32, img.height() as f32]) {
-                        let display_rect = image_area;
-                        let scale_x = display_rect.width() / size[0];
-                        let scale_y = display_rect.height() / size[1];
-                        let scale = scale_x.min(scale_y);
-                        let offset_x = (display_rect.width() - size[0] * scale) / 2.0;
-                        let offset_y = (display_rect.height() - size[1] * scale) / 2.0;
-                        let crop_rect = self.crop_rect.unwrap();
-                        let crop_min = display_rect.min + egui::vec2(offset_x + crop_rect.min.x * scale, offset_y + crop_rect.min.y * scale);
-                        let crop_size = egui::vec2((crop_rect.max.x - crop_rect.min.x) * scale, (crop_rect.max.y - crop_rect.min.y) * scale);
-                        let crop_display_rect = egui::Rect::from_min_size(crop_min, crop_size);
-                        painter.rect_stroke(crop_display_rect, 0.0, egui::Stroke::new(2.0, egui::Color32::RED));
-
-                        // Add handles
-                        let handle_size = 20.0;
-                        let corners = [
-                            ("tl", crop_display_rect.min),
-                            ("tr", crop_display_rect.right_top()),
-                            ("bl", crop_display_rect.left_bottom()),
-                            ("br", crop_display_rect.right_bottom()),
-                        ];
-                        for (id, corner) in corners {
-                            let handle_rect = egui::Rect::from_center_size(corner, egui::vec2(handle_size, handle_size));
-                            let response = ui.interact(handle_rect, egui::Id::new(format!("crop_handle_{}", id)), egui::Sense::drag());
-                            if response.dragged() {
-                                if let Some(pos) = response.interact_pointer_pos() {
-                                    let new_pos = (pos - display_rect.min - egui::vec2(offset_x, offset_y)) / scale;
-                                    let mut new_rect = crop_rect;
-                                    match id {
-                                        "tl" => new_rect.min = egui::Pos2::new(new_pos.x, new_pos.y),
-                                        "tr" => { new_rect.min.y = new_pos.y; new_rect.max.x = new_pos.x; }
-                                        "bl" => { new_rect.min.x = new_pos.x; new_rect.max.y = new_pos.y; }
-                                        "br" => new_rect.max = egui::Pos2::new(new_pos.x, new_pos.y),
-                                        _ => {}
-                                    }
-                                    self.crop_rect = Some(self.constrain_crop_rect(new_rect.min, new_rect.max, display_rect));
-                                }
-                            }
-                            painter.rect_filled(handle_rect, 0.0, egui::Color32::WHITE);
-                        }
-                    }
-                }
-            });
-        } else {
-            ui.allocate_ui_at_rect(image_area, |ui| {
-                ui.centered_and_justified(|ui| {
-                    ui.label("No image to edit");
-                });
-            });
-        }
-
-        // Controls in the middle (above bottom buttons)
-        ui.allocate_ui_at_rect(control_area, |ui| {
-            ui.vertical(|ui| {
-                if !self.crop_mode {
-                    // Algorithm, Sort Mode, Tint and Threshold aligned in one row
-                    let mut tint_changed = false;
-                    let mut tint_toggled = false;
-                    let mut threshold_changed = false;
-
-                    // Responsive layout: if there's enough width, render in one row; otherwise stack vertically
-                    let available_width = ui.available_width();
-                    let small_screen_threshold = 600.0; // px - tune for 7" displays
-                    let _slider_max_width = (available_width - 300.0).max(80.0); // remaining space for sliders
-
-                    if available_width > small_screen_threshold {
-                        ui.horizontal(|ui| {
-                            ui.label("Algorithm:");
-                            if ui.button(self.current_algorithm.name()).clicked() {
-                                let all = crate::pixel_sorter::SortingAlgorithm::all();
-                                let idx = all.iter().position(|&a| a == self.current_algorithm).unwrap_or(0);
-                                let next_idx = (idx + 1) % all.len();
-                                self.current_algorithm = all[next_idx];
-                                self.apply_pixel_sort(ctx);
-                            }
-
-                            ui.add_space(12.0);
-
-                            // Sort Mode Button
-                            ui.label("Sort Mode:");
-                            if ui.button(self.sorting_params.sort_mode.name()).clicked() {
-                                self.sorting_params.sort_mode = self.sorting_params.sort_mode.next();
-                                self.apply_pixel_sort(ctx);
-                            }
-
-                            ui.add_space(12.0);
-
-                            // Tint toggle + slider inline with limited width
-                            if ui.button(if self.tint_enabled { "Tint: ON" } else { "Tint: OFF" }).clicked() {
-                                self.tint_enabled = !self.tint_enabled;
-                                tint_toggled = true;
-                                if self.tint_enabled && self.sorting_params.color_tint == 0.0 {
-                                    self.sorting_params.color_tint = 180.0;
-                                }
-                            }
-                            let resp = ui.add_enabled(
-                                self.tint_enabled,
-                                egui::Slider::new(&mut self.sorting_params.color_tint, 0.0..=360.0)
-                                    .step_by(1.0)
-                                    .show_value(false),
-                            );
-                            tint_changed = resp.changed();
-
-                            ui.add_space(12.0);
-
-                            // Threshold inline with limited width
-                            ui.label(format!("Threshold: {:.0}", self.sorting_params.threshold));
-                            let resp = ui.add(
-                                egui::Slider::new(&mut self.sorting_params.threshold, 0.0..=255.0)
-                                    .step_by(1.0)
-                                    .show_value(false),
-                            );
-                            threshold_changed = resp.changed();
-                        });
-                    } else {
-                        // Small screen: stack controls vertically with compact sliders
-                        ui.vertical(|ui| {
-                            ui.horizontal(|ui| {
-                                ui.label("Algorithm:");
-                                if ui.button(self.current_algorithm.name()).clicked() {
-                                    let all = crate::pixel_sorter::SortingAlgorithm::all();
-                                    let idx = all.iter().position(|&a| a == self.current_algorithm).unwrap_or(0);
-                                    let next_idx = (idx + 1) % all.len();
-                                    self.current_algorithm = all[next_idx];
-                                    self.apply_pixel_sort(ctx);
-                                }
-                                ui.add_space(8.0);
-                                ui.label("Sort Mode:");
-                                if ui.button(self.sorting_params.sort_mode.name()).clicked() {
-                                    self.sorting_params.sort_mode = self.sorting_params.sort_mode.next();
-                                    self.apply_pixel_sort(ctx);
-                                }
-                            });
-
-                            ui.horizontal(|ui| {
-                                if ui.button(if self.tint_enabled { "Tint: ON" } else { "Tint: OFF" }).clicked() {
-                                    self.tint_enabled = !self.tint_enabled;
-                                    tint_toggled = true;
-                                    if self.tint_enabled && self.sorting_params.color_tint == 0.0 {
-                                        self.sorting_params.color_tint = 180.0;
-                                    }
-                                }
-                                let resp = ui.add_enabled(
-                                    self.tint_enabled,
-                                    egui::Slider::new(&mut self.sorting_params.color_tint, 0.0..=360.0)
-                                        .step_by(1.0)
-                                        .show_value(false),
-                                );
-                                tint_changed = resp.changed();
-                            });
-
-                            ui.horizontal(|ui| {
-                                ui.label(format!("Threshold: {:.0}", self.sorting_params.threshold));
-                                let resp = ui.add(
-                                    egui::Slider::new(&mut self.sorting_params.threshold, 0.0..=255.0)
-                                        .step_by(1.0)
-                                        .show_value(false),
-                                );
-                                threshold_changed = resp.changed();
-                            });
-                        });
-                    }
-
-
-                    if (tint_changed || tint_toggled || threshold_changed) && !self.is_processing {
+    fn render_edit_buttons(&mut self, ui: &mut egui::Ui, ctx: &egui::Context) {
+        // Row 1: Two sliders side by side - Threshold and Tint (Hue)
+        ui.horizontal(|ui| {
+            let available_width = ui.available_width();
+            let slider_width = (available_width - BUTTON_SPACING * 3.0) / 2.0; // Split width equally with spacing
+            
+            // Left side: Threshold slider
+            ui.allocate_ui(egui::vec2(slider_width, 60.0), |ui| {
+                ui.vertical(|ui| {
+                    if touch_slider(ui, &mut self.sorting_params.threshold, 0.0..=255.0).changed() {
                         self.apply_pixel_sort(ctx);
                     }
-                    ui.add_space(10.0);
-                }
-
-                // Crop controls
-                ui.horizontal(|ui| {
-                    if ui.button(if self.crop_mode { "Cancel Crop" } else { "Select Crop" }).clicked() {
-                        self.crop_mode = !self.crop_mode;
-                        if !self.crop_mode {
-                            self.crop_rect = None;
-                            self.selection_start = None;
+                    ui.centered_and_justified(|ui| {
+                        ui.label("Threshold");
+                    });
+                });
+            });
+            
+            ui.add_space(BUTTON_SPACING * 3.0);
+            
+            // Right side: Tint (Hue) slider
+            ui.allocate_ui(egui::vec2(slider_width, 60.0), |ui| {
+                ui.vertical(|ui| {
+                    let slider_response = touch_slider(ui, &mut self.sorting_params.color_tint, 0.0..=360.0);
+                    if slider_response.changed() {
+                        // Auto-enable tint when user adjusts the slider
+                        if !self.tint_enabled && self.sorting_params.color_tint > 0.0 {
+                            self.tint_enabled = true;
                         }
+                        self.apply_pixel_sort(ctx);
                     }
-
-                    if self.crop_mode {
-                        ui.separator();
-
-                        ui.label("Aspect Ratio:");
-                        let aspect_changed = egui::ComboBox::from_id_source("crop_aspect_ratio")
-                            .selected_text(self.crop_aspect_ratio.name())
-                            .show_ui(ui, |ui| {
-                                for &ratio in CropAspectRatio::all() {
-                                    ui.selectable_value(&mut self.crop_aspect_ratio, ratio, ratio.name());
-                                }
-                            }).response.changed();
-                        if aspect_changed {
-                            if let Some(rect) = self.crop_rect {
-                                self.crop_rect = Some(self.constrain_crop_rect(rect.min, rect.max, ctx.screen_rect()));
-                            }
-                        }
-
-                        ui.separator();
-
-                        if ui.button("Rotate 90°").clicked() {
-                            self.crop_rotation = (self.crop_rotation + 90) % 360;
-                        }
-                    }
-
-                    if self.crop_mode && self.crop_rect.is_some() {
-                        ui.separator();
-                        if ui.button("Apply Crop").clicked() {
-                            self.apply_crop_and_sort(ctx);
-                        }
-                    }
+                    
+                    ui.centered_and_justified(|ui| {
+                        ui.label("Hue");
+                    });
                 });
             });
         });
 
-        // NOTE: phase-specific and constant bottom rows are now rendered by `update_ui` using panels
-    }
+        ui.add_space(BUTTON_SPACING);
 
-    #[allow(dead_code)]
-    fn update_ui(&mut self, ctx: &egui::Context) {
-        // Phase-specific (small) bottom panel
-        egui::TopBottomPanel::bottom("phase_row").default_height(40.0).show(ctx, |ui| {
-            ui.horizontal(|ui| {
-                if self.get_current_phase() == Phase::SaveToUsb {
-                    if ui.button("Save to USB").clicked() {
-                        match self.copy_to_usb() {
-                            Ok(_) => self.status_message = "Images successfully copied to USB!".to_string(),
-                            Err(e) => self.status_message = format!("USB copy failed: {}", e),
-                        }
-                    }
-                }
-                ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
-                    ui.label(&self.status_message);
-                });
-            });
-        });
-
-        // Constant bottom panel (persistent buttons)
-        egui::TopBottomPanel::bottom("const_row").default_height(40.0).show(ctx, |ui| {
-            ui.horizontal(|ui| {
-                if ui.button("Save & Continue").clicked() {
-                    self.save_and_continue_iteration(ctx);
-                }
-                if ui.button("Take New Picture").clicked() {
-                    self.start_new_photo_session();
-                }
-            });
-        });
-
-        // Central content responds to available space automatically
-        egui::CentralPanel::default().show(ctx, |ui| {
-            match self.get_current_phase() {
-                Phase::Input => self.render_input_phase(ui, ctx),
-                Phase::Editing => self.render_editing_phase(ui, ctx),
-                Phase::SaveToUsb => self.render_usb_save_phase(ui, ctx),
+        // Row 2: All buttons in one row
+        ui.horizontal(|ui| {
+            ui.spacing_mut().item_spacing.x = 0.0; // Remove default spacing
+            let total_width = ui.available_width();
+            let spacing_width = BUTTON_SPACING * 4.0; // Manual spacing between 5 buttons
+            let button_width = (total_width - spacing_width) / 5.0;
+            
+            // Mode buttons (lighter - default styling)
+            if ui.add_sized(egui::vec2(button_width, BUTTON_HEIGHT), egui::Button::new(self.current_algorithm.name())).clicked() {
+                self.cycle_algorithm();
+                self.apply_pixel_sort(ctx);
+            }
+            
+            ui.add_space(BUTTON_SPACING);
+            
+            if ui.add_sized(egui::vec2(button_width, BUTTON_HEIGHT), egui::Button::new(self.sorting_params.sort_mode.name())).clicked() {
+                self.sorting_params.sort_mode = self.sorting_params.sort_mode.next();
+                self.apply_pixel_sort(ctx);
+            }
+            
+            ui.add_space(BUTTON_SPACING);
+            
+            // Action buttons (darker)
+            let action_button = egui::Button::new("Crop").fill(egui::Color32::from_rgb(60, 60, 70));
+            if ui.add_sized(egui::vec2(button_width, BUTTON_HEIGHT), action_button).clicked() {
+                self.current_phase = Phase::Crop;
+                self.crop_rect = None; // Reset crop
+            }
+            
+            ui.add_space(BUTTON_SPACING);
+            
+            let action_button = egui::Button::new("Save & Iterate").fill(egui::Color32::from_rgb(60, 60, 70));
+            if ui.add_sized(egui::vec2(button_width, BUTTON_HEIGHT), action_button).clicked() {
+                self.save_and_continue_iteration(ctx);
+            }
+            
+            ui.add_space(BUTTON_SPACING);
+            
+            let action_button = egui::Button::new("New Image").fill(egui::Color32::from_rgb(60, 60, 70));
+            if ui.add_sized(egui::vec2(button_width, BUTTON_HEIGHT), action_button).clicked() {
+                self.start_new_photo_session();
             }
         });
-    }
 
-    #[allow(dead_code)]
-    fn get_current_phase(&self) -> Phase {
-        // Example logic: if a USB is detected, switch to SaveToUsb phase
-        // This can be improved with actual USB detection logic
-        if self.status_message.contains("USB mode") {
-            Phase::SaveToUsb
-        } else if self.original_image.is_some() || self.processed_image.is_some() {
-            Phase::Editing
-        } else {
-            Phase::Input
+        ui.add_space(BUTTON_SPACING);
+
+        // Row 3: Export button (if USB present)
+        if self.usb_present() {
+            ui.horizontal(|ui| {
+                if equal_button(ui, "Export to USB", BUTTON_HEIGHT, 1).clicked() {
+                    let _ = self.copy_to_usb(); // Silently attempt export
+                }
+            });
         }
     }
-}
 
-impl PixelSorterApp {
-    #[allow(dead_code)]
-    fn render_usb_save_phase(&mut self, ui: &mut egui::Ui, _ctx: &egui::Context) {
-        ui.centered_and_justified(|ui| {
-            ui.heading("Save Sorted Images to USB");
-            ui.label("Plug in a USB drive and press the button below to copy all sorted images.");
-            if ui.button("Save to USB").clicked() {
-                match self.copy_to_usb() {
-                    Ok(_) => self.status_message = "Images successfully copied to USB!".to_string(),
-                    Err(e) => self.status_message = format!("USB copy failed: {}", e),
-                }
+    fn render_crop_buttons(&mut self, ui: &mut egui::Ui, ctx: &egui::Context) {
+        // Simple crop controls: Cancel and Apply
+        ui.horizontal(|ui| {
+            ui.spacing_mut().item_spacing.x = 0.0; // Remove default spacing
+            let total_width = ui.available_width();
+            let button_width = (total_width - BUTTON_SPACING) / 2.0;
+            
+            let action_button = egui::Button::new("Cancel").fill(egui::Color32::from_rgb(60, 60, 70));
+            if ui.add_sized(egui::vec2(button_width, BUTTON_HEIGHT), action_button).clicked() {
+                self.current_phase = Phase::Edit;
+                self.crop_rect = None;
             }
-            ui.label(&self.status_message);
+            
+            ui.add_space(BUTTON_SPACING);
+            
+            let action_button = egui::Button::new("Apply Crop").fill(egui::Color32::from_rgb(60, 60, 70));
+            if ui.add_sized(egui::vec2(button_width, BUTTON_HEIGHT), action_button).clicked() {
+                self.apply_crop_and_sort(ctx);
+            }
         });
+    }
+
+    fn cycle_algorithm(&mut self) {
+        let all = SortingAlgorithm::all();
+        let idx = all.iter().position(|&a| a == self.current_algorithm).unwrap_or(0);
+        let next_idx = (idx + 1) % all.len();
+        self.current_algorithm = all[next_idx];
     }
 }
 
+// ============================================================================
+// HELPER FUNCTIONS
+// ============================================================================
 
+/// Custom slider that shows value in a bubble only when touched/dragged
+fn touch_slider(ui: &mut egui::Ui, value: &mut f32, range: std::ops::RangeInclusive<f32>) -> egui::Response {
+    let desired_size = egui::vec2(ui.available_width() - 20.0, 20.0); // Added side padding
+    let (rect, mut response) = ui.allocate_exact_size(desired_size, egui::Sense::click_and_drag());
+    
+    // Add horizontal padding
+    let rect = rect.shrink2(egui::vec2(10.0, 0.0));
+    
+    if ui.is_rect_visible(rect) {
+        let visuals = ui.style().interact(&response);
+        
+        // Background rail
+        let rail_rect = rect.shrink2(egui::vec2(0.0, rect.height() * 0.25));
+        ui.painter().rect(
+            rail_rect,
+            rail_rect.height() / 2.0,
+            ui.visuals().widgets.inactive.bg_fill,
+            visuals.bg_stroke,
+        );
+        
+        // Calculate the position
+        let min = *range.start();
+        let max = *range.end();
+        let normalized = (*value - min) / (max - min);
+        
+        // Handle dragging
+        if response.dragged() {
+            if let Some(mouse_pos) = ui.ctx().pointer_interact_pos() {
+                let new_normalized = ((mouse_pos.x - rect.left()) / rect.width()).clamp(0.0, 1.0);
+                *value = min + new_normalized * (max - min);
+                response.mark_changed();
+            }
+        }
+        
+        // Handle direct click
+        if response.clicked() {
+            if let Some(mouse_pos) = ui.ctx().pointer_interact_pos() {
+                let new_normalized = ((mouse_pos.x - rect.left()) / rect.width()).clamp(0.0, 1.0);
+                *value = min + new_normalized * (max - min);
+                response.mark_changed();
+            }
+        }
+        
+        // Filled portion
+        let filled_width = rect.width() * normalized;
+        if filled_width > 0.0 {
+            let filled_rect = egui::Rect::from_min_max(
+                rail_rect.min,
+                egui::pos2(rail_rect.min.x + filled_width, rail_rect.max.y),
+            );
+            ui.painter().rect(
+                filled_rect,
+                rail_rect.height() / 2.0,
+                ui.visuals().selection.bg_fill,
+                egui::Stroke::NONE,
+            );
+        }
+        
+        // Knob/handle
+        let knob_pos = rect.left() + rect.width() * normalized;
+        let knob_center = egui::pos2(knob_pos, rect.center().y);
+        let knob_radius = rect.height() * 0.8;
+        
+        ui.painter().circle(
+            knob_center,
+            knob_radius,
+            visuals.bg_fill,
+            visuals.fg_stroke,
+        );
+        
+        // Show value bubble ONLY when actively dragging (not just hovering)
+        // Use a layer to ensure it's always on top
+        if response.dragged() {
+            let text = format!("{:.0}", value);
+            let font_id = egui::FontId::proportional(16.0);
+            let galley = ui.painter().layout_no_wrap(text, font_id.clone(), visuals.text_color());
+            
+            // Bubble background
+            let bubble_size = galley.size() + egui::vec2(16.0, 10.0);
+            let bubble_pos = egui::pos2(knob_pos - bubble_size.x / 2.0, rect.top() - bubble_size.y - 12.0);
+            let bubble_rect = egui::Rect::from_min_size(bubble_pos, bubble_size);
+            
+            // Draw on a higher layer to ensure visibility
+            let layer_id = egui::LayerId::new(egui::Order::Tooltip, egui::Id::new("slider_bubble"));
+            ui.ctx().layer_painter(layer_id).rect(
+                bubble_rect,
+                5.0,
+                egui::Color32::from_rgb(40, 40, 45),
+                egui::Stroke::new(1.0, egui::Color32::from_rgb(100, 100, 110)),
+            );
+            
+            // Text
+            let text_pos = bubble_rect.center() - galley.size() / 2.0;
+            ui.ctx().layer_painter(layer_id).galley(text_pos, galley);
+        }
+    }
+    
+    response
+}
 
+fn equal_button(ui: &mut egui::Ui, text: &str, height: f32, count: usize) -> egui::Response {
+    let spacing_total = BUTTON_SPACING * (count - 1) as f32;
+    let width = (ui.available_width() - spacing_total) / count as f32;
+    ui.add_sized(
+        egui::vec2(width, height),
+        egui::Button::new(text),
+    )
+}
+
+fn fit_rect_in_rect(content: egui::Vec2, container: egui::Vec2) -> egui::Vec2 {
+    let scale = (container.x / content.x).min(container.y / content.y);
+    content * scale
+}
+
+fn center_rect_in_rect(content_size: egui::Vec2, container: egui::Rect) -> egui::Rect {
+    let offset = (container.size() - content_size) * 0.5;
+    egui::Rect::from_min_size(container.min + offset, content_size)
+}
