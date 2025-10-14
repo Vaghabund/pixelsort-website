@@ -36,3 +36,6 @@ Thumbs.db
 # Raspberry Pi specific
 *.img
 *.zip
+ 
+# Generated/collected images - do not commit
+/sorted_images/
