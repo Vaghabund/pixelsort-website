@@ -1,6 +1,5 @@
 use crate::PixelSorterApp;
 use eframe::egui;
-use image;
 use std::sync::Arc;
 
 impl PixelSorterApp {
@@ -12,7 +11,7 @@ impl PixelSorterApp {
             let params = self.sorting_params.clone();
             let pixel_sorter = Arc::clone(&self.pixel_sorter);
 
-            match pixel_sorter.sort_pixels(&original, algorithm, &params) {
+            match pixel_sorter.sort_pixels(original, algorithm, &params) {
                 Ok(mut sorted) => {
                     // Apply tint AFTER pixel sorting (as a visual effect only)
                     if self.tint_enabled && self.sorting_params.color_tint > 0.0 {
@@ -55,7 +54,7 @@ impl PixelSorterApp {
         let luminance = 0.299 * orig_r + 0.587 * orig_g + 0.114 * orig_b;
         
         // For very dark or very bright pixels, reduce tint strength
-        let adjusted_strength = if luminance < 0.1 || luminance > 0.9 {
+        let adjusted_strength = if !(0.1..=0.9).contains(&luminance) {
             strength * 0.3  // Preserve blacks and whites more
         } else {
             strength

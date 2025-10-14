@@ -118,7 +118,7 @@ impl CameraController {
 
         // Start streaming process
         let process = Command::new("rpicam-vid")
-            .args(&[
+            .args([
                 "--output", "-",  // Output to stdout
                 "--width", &self.preview_width.to_string(),
                 "--height", &self.preview_height.to_string(),
@@ -307,7 +307,7 @@ impl CameraController {
 
         // Take a high-quality snapshot using the working approach
         let result = Command::new("rpicam-still")
-            .args(&[
+            .args([
                 "-o", &self.temp_capture_path,
                 "--width", &self.capture_width.to_string(),
                 "--height", &self.capture_height.to_string(),

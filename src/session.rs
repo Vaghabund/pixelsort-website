@@ -45,20 +45,18 @@ impl PixelSorterApp {
         let mut usb_found = false;
         for base_path in &usb_paths {
             if let Ok(entries) = std::fs::read_dir(base_path) {
-                for entry in entries {
-                    if let Ok(entry) = entry {
-                        let usb_path = entry.path();
-                        if usb_path.is_dir() {
-                            // Try to copy sorted_images folder to USB
-                            let dest_path = usb_path.join("sorted_images");
-                            if let Ok(()) = self.copy_directory(
-                                PathBuf::from("sorted_images"),
-                                dest_path.clone(),
-                            ) {
-                                println!("Successfully copied to USB: {}", dest_path.display());
-                                usb_found = true;
-                                break;
-                            }
+                for entry in entries.flatten() {
+                    let usb_path = entry.path();
+                    if usb_path.is_dir() {
+                        // Try to copy sorted_images folder to USB
+                        let dest_path = usb_path.join("sorted_images");
+                        if let Ok(()) = self.copy_directory(
+                            PathBuf::from("sorted_images"),
+                            dest_path.clone(),
+                        ) {
+                            println!("Successfully copied to USB: {}", dest_path.display());
+                            usb_found = true;
+                            break;
                         }
                     }
                 }
@@ -151,7 +149,7 @@ impl PixelSorterApp {
             // Extract algorithm to avoid borrow conflict
             let algorithm = self.current_algorithm;
             // Save the current iteration using the existing auto-save system
-            if let Ok(_saved_path) = self.auto_save_image(&processed, &algorithm) {
+            if let Ok(_saved_path) = self.auto_save_image(processed, &algorithm) {
                 // Load the saved image as the new source for next iteration
                 if let Ok(()) = self.load_last_iteration_as_source() {
                     // Process the loaded image immediately for preview

@@ -19,6 +19,7 @@ use crate::ui::PixelSorterApp;
 use crate::camera_controller::CameraController;
 
 #[tokio::main]
+#[allow(clippy::arc_with_non_send_sync)]
 async fn main() -> Result<()> {
     // Set up logging (Info level for production)
     env_logger::Builder::from_default_env()

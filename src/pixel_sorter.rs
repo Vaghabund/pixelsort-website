@@ -127,7 +127,7 @@ impl PixelSorter {
             for (start, end) in intervals {
                 if end - start > 1 {
                     let mut segment: Vec<_> = row_pixels[start..end].iter().map(|(_, pixel)| *pixel).collect();
-                    segment.sort_by(|a, b| self.sort_key(a, params.sort_mode).cmp(&self.sort_key(b, params.sort_mode)));
+                    segment.sort_by_key(|a| self.sort_key(a, params.sort_mode));
                     for (i, &pixel) in segment.iter().enumerate() {
                         image.put_pixel((start + i) as u32, y, pixel);
                     }
@@ -146,7 +146,7 @@ impl PixelSorter {
             for (start, end) in intervals {
                 if end - start > 1 {
                     let mut segment: Vec<_> = col_pixels[start..end].iter().map(|(_, pixel)| *pixel).collect();
-                    segment.sort_by(|a, b| self.sort_key(a, params.sort_mode).cmp(&self.sort_key(b, params.sort_mode)));
+                    segment.sort_by_key(|a| self.sort_key(a, params.sort_mode));
                     for (i, &pixel) in segment.iter().enumerate() {
                         image.put_pixel(x, (start + i) as u32, pixel);
                     }
@@ -181,7 +181,7 @@ impl PixelSorter {
             for (start, end) in intervals {
                 if end - start > 1 {
                     let mut segment: Vec<_> = pixel_values[start..end].to_vec();
-                    segment.sort_by(|a, b| self.sort_key(a, params.sort_mode).cmp(&self.sort_key(b, params.sort_mode)));
+                    segment.sort_by_key(|a| self.sort_key(a, params.sort_mode));
                     for (i, &pixel) in segment.iter().enumerate() {
                         let ((x, y), _) = diagonal_pixels[start + i];
                         image.put_pixel(x, y, pixel);

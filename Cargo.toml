@@ -2,41 +2,25 @@
 name = "pixelsort-pi"
 version = "0.1.0"
 edition = "2021"
-authors = ["Your Name <your.email@example.com>"]
 description = "Manipulatable pixel sorting application for Raspberry Pi 5"
 license = "MIT"
-repository = "https://github.com/yourusername/pixelsort-pi"
 
 [dependencies]
 # Image processing
 image = "0.24"
-imageproc = "0.23"
 
 # GUI framework - egui for immediate mode GUI
 eframe = "0.24"
 egui = "0.24"
-egui_extras = "0.24"
 
-
-
-# Raspberry Pi Camera support (using system libcamera via process calls)
-# rascam = { version = "0.0.2", optional = true }  # Disabled - requires old MMAL libs
-
-# Async runtime and utilities
+# Async runtime
 tokio = { version = "1.0", features = ["full"] }
-crossbeam = "0.8"
-async-trait = "0.1"
 
 # File dialogs and system integration
 rfd = "0.11"
 
-# Configuration and serialization
-serde = { version = "1.0", features = ["derive"] }
-toml = "0.8"
-
 # Error handling
 anyhow = "1.0"
-thiserror = "1.0"
 
 # Date and time for timestamped filenames
 chrono = "0.4"
@@ -45,12 +29,7 @@ chrono = "0.4"
 log = "0.4"
 env_logger = "0.10"
 
-# Math utilities
-nalgebra = "0.32"
-
 [target.'cfg(not(target_arch = "aarch64"))'.dependencies]
-# Development dependencies for non-ARM platforms
-gilrs = { version = "0.10", optional = true }  # Gamepad input simulation for development
 
 [target.'cfg(windows)'.dependencies]
 winapi = { version = "0.3", features = ["winuser", "windef", "winnt", "winbase"] }
@@ -71,4 +50,3 @@ path = "src/main.rs"
 [features]
 default = ["camera"]
 camera = []  # Camera support via libcamera system calls
-dev-simulation = ["gilrs"]

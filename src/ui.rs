@@ -1,7 +1,6 @@
 use std::sync::Arc;
 use std::time::Instant;
 use eframe::egui;
-use image;
 use tokio::sync::RwLock;
 
 use crate::pixel_sorter::{PixelSorter, SortingAlgorithm, SortingParameters};
@@ -53,8 +52,6 @@ pub struct PixelSorterApp {
     // Crop state
     pub crop_rect: Option<egui::Rect>, // In image coordinates
     pub drag_state: DragState,
-    pub crop_mode: bool,
-    pub selection_start: Option<egui::Pos2>,
     
     // Session management
     pub iteration_counter: u32,
@@ -110,8 +107,6 @@ impl PixelSorterApp {
             preview_mode: true,
             crop_rect: None,
             drag_state: DragState::None,
-            crop_mode: false,
-            selection_start: None,
             iteration_counter: 0,
             current_session_folder: None,
             tint_enabled: false,

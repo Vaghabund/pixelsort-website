@@ -1,4 +1,4 @@
-# Raspberry Pi Pixel Sorter (Rust Edition)
+# Raspberry Pi Pixel Sorter (Rust)
 
 A high-performance, manipulatable pixel sorting application built in Rust for Raspberry Pi 5 with 7-inch TFT screen and GPIO button controls. Experience blazing-fast pixel manipulation with a touch-optimized interface!
 
@@ -8,7 +8,7 @@ A high-performance, manipulatable pixel sorting application built in Rust for Ra
 
 ## 🚀 Why Rust?
 
-This Rust implementation offers significant advantages over the Python version:
+This Rust implementation offers significant advantages:
 
 - **⚡ 5-10x Faster Processing**: Compiled native code vs interpreted Python
 - **🧠 Lower Memory Usage**: No garbage collector, predictable memory patterns
@@ -18,12 +18,12 @@ This Rust implementation offers significant advantages over the Python version:
 
 ## ✨ Features
 
-- 🎨 **Four Sorting Algorithms**: Horizontal, vertical, diagonal, and radial pixel sorting
+- 🎨 **Sorting Algorithms**: Horizontal, vertical, diagonal pixel sorting
 - 🖱️ **GPIO Button Controls**: Real-time parameter adjustment via physical buttons  
 - 📺 **Touch-Optimized GUI**: egui-based interface designed for 7-inch displays
 - ⚡ **Non-blocking Processing**: Smooth UI even during intensive operations
 - 🔧 **Live Parameter Tuning**: Instant feedback with threshold and interval adjustments
-- 💾 **Multi-format Support**: Load/save PNG, JPEG, BMP, TIFF, WebP
+- 💾 **Multi-format Support**: Load/save PNG/JPEG/BMP/TIFF
 - 📱 **Cross-platform Development**: Develop on PC, deploy to Pi
 
 ## 🛠️ Hardware Requirements
@@ -35,24 +35,7 @@ This Rust implementation offers significant advantages over the Python version:
 - **MicroSD Card** (32GB+ Class 10 recommended)
 - **Official Pi 5 Power Supply** (5V/5A USB-C)
 
-### GPIO Button Wiring
-
-| Function | GPIO Pin (BCM) | Description |
-|----------|---------------|-------------|
-| Load Image | 18 | Open file dialog to load new image |
-| Next Algorithm | 19 | Cycle through sorting algorithms |
-| Threshold ↑ | 20 | Increase brightness threshold (+10) |
-| Threshold ↓ | 21 | Decrease brightness threshold (-10) |
-| Save Image | 26 | Save current processed result |
-
-### Wiring Diagram
-```
-Button → GPIO Pin → Pi
-         ↓
-       Ground (GND)
-
-Uses internal pull-up resistors (configured in software)
-```
+GPIO buttons are not required in the current build; the UI is fully touch-capable. If you later add GPIO support, document wiring here.
 
 ## 📦 Installation
 
@@ -94,7 +77,7 @@ Uses internal pull-up resistors (configured in software)
    scp target/aarch64-unknown-linux-gnu/release/pixelsort-pi pi@your-pi-ip:~/
    ```
 
-### Method 3: Build on Pi (Slower)
+### Method 3: Build on Pi (On device)
 
 1. **Install Rust on Pi:**
    ```bash
@@ -106,7 +89,7 @@ Uses internal pull-up resistors (configured in software)
    ```bash
    git clone https://github.com/yourusername/pixelsort-pi.git
    cd pixelsort-pi
-   cargo build --release --features gpio
+   cargo build --release
    ```
 
 ## 🚀 Quick Start
@@ -138,19 +121,16 @@ sudo systemctl start pixelsort-pi
 ## 🎮 Usage
 
 ### GUI Controls
-- **Load Image**: Click or use Button 1 to open file dialog
-- **Algorithm Selection**: Radio buttons or Button 2 to cycle
-- **Parameter Sliders**: 
-  - Threshold (0-255): Controls pixel grouping sensitivity
-  - Interval (1-50): Controls processing frequency/smoothness
-- **Save Result**: Click or use Button 5
+- Load Image: File dialog for images
+- Take Picture: Capture via rpicam-still on Pi
+- Algorithm: Cycle Horizontal/Vertical/Diagonal
+- Sort Mode: Cycle Brightness/Black/White
+- Sliders: Threshold and Hue (tint is display-only)
+- Crop: Drag handles and apply
+- Save & Iterate: Saves and loads the latest edit as new source
 
-### GPIO Button Functions
-1. **Button 1 (GPIO 18)**: Load new image
-2. **Button 2 (GPIO 19)**: Cycle algorithms (→ Vertical → Diagonal → Radial → Horizontal)
-3. **Button 3 (GPIO 20)**: Threshold +10 (faster response, more dramatic sorting)
-4. **Button 4 (GPIO 21)**: Threshold -10 (smoother gradients, subtle effects)
-5. **Button 5 (GPIO 26)**: Save current result
+### Keyboard Shortcuts
+Not defined; use the on-screen controls.
 
 ### Keyboard Shortcuts (Development)
 When running on non-Pi systems or for development:
@@ -158,54 +138,7 @@ When running on non-Pi systems or for development:
 - **ESC**: Exit application
 
 ## ⚙️ Configuration
-
-### Config File Location
-The application looks for `pixelsort_config.toml` in:
-1. Current working directory
-2. `~/pixelsort/pixelsort_config.toml`
-3. Creates default if none found
-
-### Example Configuration
-```toml
-[display]
-width = 800
-height = 480
-fullscreen = true
-image_display_width = 480
-image_display_height = 360
-
-[gpio]
-enabled = true
-debounce_ms = 200
-
-[gpio.pins]
-load_image = 18
-next_algorithm = 19
-threshold_up = 20
-threshold_down = 21
-save_image = 26
-
-[processing]
-default_threshold = 50.0
-default_interval = 10
-max_image_width = 1920
-max_image_height = 1080
-preview_scale_factor = 4
-```
-
-### Display Presets
-Built-in configurations for common setups:
-
-```rust
-// 7-inch display (800x480)
-Config::raspberry_pi_7inch()
-
-// HDMI monitor (1920x1080)  
-Config::raspberry_pi_hdmi()
-
-// Development (windowed)
-Config::development_desktop()
-```
+No external config file is required; defaults are embedded. Window starts at 1024x600 with minimum 800x480.
 
 ## 🎨 Algorithm Details
 
@@ -245,9 +178,8 @@ pixelsort-pi/
 │   ├── main.rs              # Application entry point
 │   ├── pixel_sorter.rs      # Core sorting algorithms
 │   ├── ui.rs                # egui interface
-│   ├── gpio_controller.rs   # GPIO button handling
-│   ├── image_processor.rs   # Image I/O and processing
-│   └── config.rs           # Configuration management
+│   ├── camera_controller.rs # Pi camera handling via rpicam
+│   └── texture.rs          # Texture helpers
 ├── Cargo.toml              # Dependencies and build config
 ├── build_for_pi.sh        # Cross-compilation script
 ├── setup_pi.sh           # Pi installation script
@@ -259,9 +191,6 @@ pixelsort-pi/
 ```bash
 # Build for current platform (development)
 cargo build --release
-
-# Build with GPIO simulation
-cargo build --release --features dev-simulation
 
 # Run tests
 cargo test
@@ -361,14 +290,7 @@ sudo nano /boot/config.txt
 ```
 
 **Out of memory errors**
-```bash
-# Check available memory  
-free -h
-
-# Reduce max image size in config
-nano pixelsort_config.toml
-# Set smaller max_image_width/height
-```
+- Use smaller images and ensure swap is enabled on Pi if needed
 
 ### Performance Issues
 

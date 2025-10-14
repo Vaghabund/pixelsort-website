@@ -51,10 +51,8 @@ impl PixelSorterApp {
                     // Use nearest filtering for cropped images so the upscaled look is crisp
                     self.create_processed_texture(ctx, sorted_cropped);
 
-                    // Exit crop mode and return to Edit phase
-                    self.crop_mode = false;
+                    // Exit crop and return to Edit phase
                     self.crop_rect = None;
-                    self.selection_start = None;
                     self.current_phase = crate::ui::Phase::Edit;
                 }
                 
