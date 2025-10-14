@@ -2,6 +2,13 @@
 
 Touch-optimized pixel sorting app for Raspberry Pi 5 (7" TFT via HDMI) with a clean, responsive egui UI. Build and iterate effects fast by sorting pixels horizontally, vertically, or diagonally.
 
+## 🚀 Why Rust?
+
+- Fast native performance for real-time interaction
+- Low memory footprint and predictable behavior
+- Memory safety without garbage collection
+- Portable development on desktop; deploy to Pi
+
 ## ✨ Features
 
 - Live camera preview on Pi (rpicam-vid) with one-tap capture
@@ -31,6 +38,27 @@ Raspberry Pi (on device):
 cargo build --release
 ./target/release/pixelsort-pi
 ```
+
+Cross-compile for Pi using cross (recommended):
+
+1) Install cross once
+```powershell
+cargo install cross
+```
+
+2) Type-check for Pi (fast)
+```powershell
+cross check --target aarch64-unknown-linux-gnu
+```
+
+3) Build release binary for Pi
+```powershell
+cross build --release --target aarch64-unknown-linux-gnu
+```
+
+Notes
+- This repo includes `Cross.toml` pointing to an aarch64 image; cross will use Docker under the hood.
+- Ensure Docker is running before using cross.
 
 Cross-compile for Pi (from PC):
 - Scripts are provided: `build_for_pi.sh` (Linux/macOS) and `build_for_pi.bat` (Windows)
@@ -69,6 +97,7 @@ Removed legacy modules: config.rs, image_processor.rs
 - No camera on desktop: App shows animated test pattern; capture button has no effect
 - USB export: requires a mounted drive under `/media/*` or `/mnt/*`; copies the entire `sorted_images/` directory
 - Window size: starts at 1024x600 with minimum 800x480; resizable on desktop
+ - On Pi, install camera tools: `sudo apt install -y rpicam-apps`
 
 ## 📝 License
 
