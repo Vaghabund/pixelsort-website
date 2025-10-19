@@ -123,11 +123,21 @@ impl PixelSorterApp {
     }
 
     fn usb_present(&self) -> bool {
-        let usb_paths = ["/media/pi", "/media", "/mnt"];
+        let usb_paths = ["/media/pi", "/media/usb", "/media", "/mnt/usb", "/mnt"];
         for base_path in &usb_paths {
             if let Ok(entries) = std::fs::read_dir(base_path) {
                 for entry in entries.flatten() {
-                    if entry.path().is_dir() {
+                    let usb_path = entry.path();
+                    
+                    // Skip if not a directory or if it's the pi user home
+                    if !usb_path.is_dir() || usb_path.to_string_lossy().contains("/home/") {
+                        continue;
+                    }
+                    
+                    // Check if we can write to this path (indicates writable USB)
+                    let test_file = usb_path.join(".pixelsort_usb_check");
+                    if std::fs::write(&test_file, "test").is_ok() {
+                        let _ = std::fs::remove_file(&test_file);
                         return true;
                     }
                 }
