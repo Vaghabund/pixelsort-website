@@ -9,9 +9,10 @@ use crate::camera_controller::CameraController;
 // ============================================================================
 // CONSTANTS FOR UI STYLING - Easy to modify
 // ============================================================================
-const BUTTON_HEIGHT: f32 = 50.0;
-const BUTTON_SPACING: f32 = 10.0;
-const HANDLE_SIZE: f32 = 20.0;
+const BUTTON_HEIGHT: f32 = 57.5; // 15% larger than 50.0
+const BUTTON_SPACING: f32 = 11.5; // 15% larger than 10.0
+const HANDLE_SIZE: f32 = 23.0; // 15% larger than 20.0
+const SLIDER_HEIGHT: f32 = 69.0; // 15% larger than 60.0
 
 // ============================================================================
 // ENUMS
@@ -167,32 +168,19 @@ impl PixelSorterApp {
     }
 
     fn render_ui(&mut self, ctx: &egui::Context) {
-        // Calculate dynamic button zone height based on current phase
-        let button_zone_height = match self.current_phase {
-            Phase::Input => BUTTON_HEIGHT + BUTTON_SPACING * 2.0, // 1 row
-            Phase::Crop => BUTTON_HEIGHT + BUTTON_SPACING * 2.0, // 1 row
-            Phase::Edit => {
-                // 2 rows (sliders + buttons) + optional USB row
-                let base_height = (BUTTON_HEIGHT + 60.0) + BUTTON_SPACING * 3.0;
-                if self.usb_present() {
-                    base_height + BUTTON_HEIGHT + BUTTON_SPACING
-                } else {
-                    base_height
-                }
-            }
-        };
-        
-        // Button Zone at bottom
-        egui::TopBottomPanel::bottom("button_zone")
-            .exact_height(button_zone_height)
+        // Fullscreen image with NO panels - use CentralPanel for everything
+        egui::CentralPanel::default()
+            .frame(egui::Frame::none()) // No frame/padding
             .show(ctx, |ui| {
-                self.render_button_zone(ui, ctx);
+                // Get full available space
+                let full_rect = ui.max_rect();
+                
+                // Render fullscreen viewport (image fills entire window)
+                self.render_viewport(ui, full_rect, ctx);
+                
+                // Overlay button zone at bottom using Area (floats on top)
+                self.render_button_overlay(ui, ctx, full_rect);
             });
-
-        // Viewport in center (full screen now without status bar)
-        egui::CentralPanel::default().show(ctx, |ui| {
-            self.render_viewport(ui, ctx);
-        });
     }
 }
 
@@ -201,24 +189,19 @@ impl PixelSorterApp {
 // ============================================================================
 
 impl PixelSorterApp {
-    fn render_viewport(&mut self, ui: &mut egui::Ui, ctx: &egui::Context) {
-        let viewport_rect = ui.max_rect();
-
+    fn render_viewport(&mut self, ui: &mut egui::Ui, rect: egui::Rect, ctx: &egui::Context) {
         match self.current_phase {
-            Phase::Input => self.render_input_viewport(ui, viewport_rect),
-            Phase::Edit => self.render_edit_viewport(ui, viewport_rect),
-            Phase::Crop => self.render_crop_viewport(ui, viewport_rect, ctx),
+            Phase::Input => self.render_input_viewport(ui, rect),
+            Phase::Edit => self.render_edit_viewport(ui, rect),
+            Phase::Crop => self.render_crop_viewport(ui, rect, ctx),
         }
     }
 
     fn render_input_viewport(&mut self, ui: &mut egui::Ui, rect: egui::Rect) {
         if let Some(texture) = &self.camera_texture {
-            let image_size = texture.size_vec2();
-            let display_size = fit_rect_in_rect(image_size, rect.size());
-            let centered_rect = center_rect_in_rect(display_size, rect);
-            
-            ui.allocate_ui_at_rect(centered_rect, |ui| {
-                ui.add(egui::Image::new(texture).fit_to_exact_size(display_size));
+            // Fill entire screen with image (stretch to fit)
+            ui.allocate_ui_at_rect(rect, |ui| {
+                ui.add(egui::Image::new(texture).fit_to_exact_size(rect.size()));
             });
         } else {
             ui.allocate_ui_at_rect(rect, |ui| {
@@ -231,12 +214,9 @@ impl PixelSorterApp {
 
     fn render_edit_viewport(&mut self, ui: &mut egui::Ui, rect: egui::Rect) {
         if let Some(texture) = &self.processed_texture {
-            let image_size = texture.size_vec2();
-            let display_size = fit_rect_in_rect(image_size, rect.size());
-            let centered_rect = center_rect_in_rect(display_size, rect);
-            
-            ui.allocate_ui_at_rect(centered_rect, |ui| {
-                ui.add(egui::Image::new(texture).fit_to_exact_size(display_size));
+            // Fill entire screen with image (stretch to fit)
+            ui.allocate_ui_at_rect(rect, |ui| {
+                ui.add(egui::Image::new(texture).fit_to_exact_size(rect.size()));
             });
         } else {
             ui.allocate_ui_at_rect(rect, |ui| {
@@ -250,16 +230,14 @@ impl PixelSorterApp {
     fn render_crop_viewport(&mut self, ui: &mut egui::Ui, rect: egui::Rect, ctx: &egui::Context) {
         if let Some(texture) = &self.processed_texture {
             let image_size = texture.size_vec2();
-            let display_size = fit_rect_in_rect(image_size, rect.size());
-            let centered_rect = center_rect_in_rect(display_size, rect);
             
-            // Draw image
-            ui.allocate_ui_at_rect(centered_rect, |ui| {
-                ui.add(egui::Image::new(texture).fit_to_exact_size(display_size));
+            // Fill entire screen with image
+            ui.allocate_ui_at_rect(rect, |ui| {
+                ui.add(egui::Image::new(texture).fit_to_exact_size(rect.size()));
             });
 
-            // Draw overlay and crop handles
-            self.render_crop_overlay(ui, centered_rect, image_size, ctx);
+            // Draw overlay and crop handles (use full screen rect)
+            self.render_crop_overlay(ui, rect, image_size, ctx);
         }
     }
 
@@ -455,15 +433,50 @@ impl PixelSorterApp {
 }
 
 // ============================================================================
-// BUTTON ZONE RENDERING
+// BUTTON ZONE RENDERING (OVERLAY)
 // ============================================================================
 
 impl PixelSorterApp {
-    fn render_button_zone(&mut self, ui: &mut egui::Ui, ctx: &egui::Context) {
-        // Use ScrollArea to ensure all buttons are accessible even on smaller screens
-        egui::ScrollArea::vertical()
-            .auto_shrink([false; 2])
-            .show(ui, |ui| {
+    fn render_button_overlay(&mut self, _ui: &mut egui::Ui, ctx: &egui::Context, screen_rect: egui::Rect) {
+        // Calculate button zone height based on current phase
+        let button_zone_height = match self.current_phase {
+            Phase::Input => BUTTON_HEIGHT + BUTTON_SPACING * 2.0,
+            Phase::Crop => BUTTON_HEIGHT + BUTTON_SPACING * 2.0,
+            Phase::Edit => {
+                let base_height = (BUTTON_HEIGHT + SLIDER_HEIGHT) + BUTTON_SPACING * 3.0;
+                if self.usb_present() {
+                    base_height + BUTTON_HEIGHT + BUTTON_SPACING
+                } else {
+                    base_height
+                }
+            }
+        };
+
+        // Create a floating area at the bottom of the screen
+        let area_rect = egui::Rect::from_min_size(
+            egui::pos2(0.0, screen_rect.max.y - button_zone_height),
+            egui::vec2(screen_rect.width(), button_zone_height),
+        );
+
+        egui::Area::new("button_overlay")
+            .fixed_pos(area_rect.min)
+            .order(egui::Order::Foreground)
+            .show(ctx, |ui| {
+                // Semi-transparent dark background
+                let bg_rect = egui::Rect::from_min_size(
+                    egui::Pos2::ZERO,
+                    egui::vec2(screen_rect.width(), button_zone_height),
+                );
+                ui.painter().rect_filled(
+                    bg_rect,
+                    0.0,
+                    egui::Color32::from_black_alpha(200), // Semi-transparent
+                );
+
+                // Set fixed size for button area
+                ui.set_width(screen_rect.width());
+                ui.set_height(button_zone_height);
+
                 ui.vertical_centered(|ui| {
                     ui.add_space(BUTTON_SPACING);
                     
@@ -480,7 +493,7 @@ impl PixelSorterApp {
 
     fn render_input_buttons(&mut self, ui: &mut egui::Ui, ctx: &egui::Context) {
         ui.horizontal(|ui| {
-            ui.spacing_mut().item_spacing.x = 0.0; // Remove default spacing
+            ui.spacing_mut().item_spacing.x = 0.0;
             let total_width = ui.available_width();
             let button_width = (total_width - BUTTON_SPACING) / 2.0;
             
@@ -497,13 +510,13 @@ impl PixelSorterApp {
     }
 
     fn render_edit_buttons(&mut self, ui: &mut egui::Ui, ctx: &egui::Context) {
-        // Row 1: Two sliders side by side - Threshold and Tint (Hue)
+        // Row 1: Two sliders side by side
         ui.horizontal(|ui| {
             let available_width = ui.available_width();
-            let slider_width = (available_width - BUTTON_SPACING * 3.0) / 2.0; // Split width equally with spacing
+            let slider_width = (available_width - BUTTON_SPACING * 3.0) / 2.0;
             
-            // Left side: Threshold slider
-            ui.allocate_ui(egui::vec2(slider_width, 60.0), |ui| {
+            // Left: Threshold slider
+            ui.allocate_ui(egui::vec2(slider_width, SLIDER_HEIGHT), |ui| {
                 ui.vertical(|ui| {
                     if touch_slider(ui, &mut self.sorting_params.threshold, 0.0..=255.0).changed() {
                         self.apply_pixel_sort(ctx);
@@ -516,18 +529,16 @@ impl PixelSorterApp {
             
             ui.add_space(BUTTON_SPACING * 3.0);
             
-            // Right side: Tint (Hue) slider
-            ui.allocate_ui(egui::vec2(slider_width, 60.0), |ui| {
+            // Right: Tint (Hue) slider
+            ui.allocate_ui(egui::vec2(slider_width, SLIDER_HEIGHT), |ui| {
                 ui.vertical(|ui| {
                     let slider_response = touch_slider(ui, &mut self.sorting_params.color_tint, 0.0..=360.0);
                     if slider_response.changed() {
-                        // Auto-enable tint when user adjusts the slider
                         if !self.tint_enabled && self.sorting_params.color_tint > 0.0 {
                             self.tint_enabled = true;
                         }
                         self.apply_pixel_sort(ctx);
                     }
-                    
                     ui.centered_and_justified(|ui| {
                         ui.label("Hue");
                     });
@@ -734,14 +745,4 @@ fn equal_button(ui: &mut egui::Ui, text: &str, height: f32, count: usize) -> egu
         egui::vec2(width, height),
         egui::Button::new(text),
     )
-}
-
-fn fit_rect_in_rect(content: egui::Vec2, container: egui::Vec2) -> egui::Vec2 {
-    let scale = (container.x / content.x).min(container.y / content.y);
-    content * scale
-}
-
-fn center_rect_in_rect(content_size: egui::Vec2, container: egui::Rect) -> egui::Rect {
-    let offset = (container.size() - content_size) * 0.5;
-    egui::Rect::from_min_size(container.min + offset, content_size)
 }

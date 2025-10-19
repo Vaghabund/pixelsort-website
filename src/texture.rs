@@ -4,6 +4,11 @@ use crate::PixelSorterApp;
 
 impl PixelSorterApp {
     pub fn update_camera_texture(&mut self, ctx: &Context, image: &RgbImage) {
+        // Validate image before updating to prevent white flash
+        if image.width() == 0 || image.height() == 0 {
+            return; // Skip invalid frames
+        }
+        
         let size = [image.width() as usize, image.height() as usize];
         let pixels = image.as_flat_samples();
 
@@ -12,8 +17,13 @@ impl PixelSorterApp {
         // Reuse existing texture - optimized for 30 FPS updates
         match &mut self.camera_texture {
             Some(texture) => {
-                // Direct update - no allocation
-                texture.set(color_image, TextureOptions::NEAREST);
+                // Only update if size matches to prevent flash
+                if texture.size() == size {
+                    texture.set(color_image, TextureOptions::NEAREST);
+                } else {
+                    // Size changed, recreate texture
+                    *texture = ctx.load_texture("camera_preview", color_image, TextureOptions::NEAREST);
+                }
             }
             None => {
                 // First time only
