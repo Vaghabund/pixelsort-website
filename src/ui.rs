@@ -60,6 +60,10 @@ pub struct PixelSorterApp {
     pub iteration_counter: u32,
     pub current_session_folder: Option<String>,
     
+    // Export status
+    pub export_message: Option<String>,
+    pub export_message_time: Option<Instant>,
+    
     // Other
     pub tint_enabled: bool,
 }
@@ -112,6 +116,8 @@ impl PixelSorterApp {
             drag_state: DragState::None,
             iteration_counter: 0,
             current_session_folder: None,
+            export_message: None,
+            export_message_time: None,
             tint_enabled: false,
         }
     }
@@ -182,7 +188,45 @@ impl PixelSorterApp {
                 
                 // Overlay button zone at bottom using Area (floats on top)
                 self.render_button_overlay(ui, ctx, full_rect);
+                
+                // Show export status message popup (centered, top-center)
+                self.render_export_message(ctx, full_rect);
             });
+    }
+    
+    fn render_export_message(&mut self, ctx: &egui::Context, _screen_rect: egui::Rect) {
+        // Auto-hide message after 3 seconds
+        if let Some(message_time) = self.export_message_time {
+            if message_time.elapsed().as_secs() > 3 {
+                self.export_message = None;
+                self.export_message_time = None;
+            }
+        }
+        
+        if let Some(ref message) = self.export_message {
+            let is_success = message.starts_with('✓');
+            
+            egui::Area::new("export_message")
+                .anchor(egui::Align2::CENTER_TOP, egui::vec2(0.0, UI_PADDING * 3.0))
+                .order(egui::Order::Tooltip)
+                .show(ctx, |ui| {
+                    egui::Frame::none()
+                        .fill(if is_success {
+                            egui::Color32::from_rgb(40, 120, 40) // Green for success
+                        } else {
+                            egui::Color32::from_rgb(180, 40, 40) // Red for error
+                        })
+                        .rounding(8.0)
+                        .inner_margin(egui::Margin::symmetric(20.0, 15.0))
+                        .show(ui, |ui| {
+                            ui.label(
+                                egui::RichText::new(message)
+                                    .color(egui::Color32::WHITE)
+                                    .size(20.0)
+                            );
+                        });
+                });
+        }
     }
 }
 
@@ -628,7 +672,16 @@ impl PixelSorterApp {
         if self.usb_present() {
             ui.horizontal(|ui| {
                 if equal_button(ui, "Export to USB", BUTTON_HEIGHT, 1).clicked() {
-                    let _ = self.copy_to_usb(); // Silently attempt export
+                    match self.copy_to_usb() {
+                        Ok(()) => {
+                            self.export_message = Some("✓ Exported to USB!".to_string());
+                            self.export_message_time = Some(Instant::now());
+                        }
+                        Err(e) => {
+                            self.export_message = Some(format!("✗ Export failed: {}", e));
+                            self.export_message_time = Some(Instant::now());
+                        }
+                    }
                 }
             });
         }

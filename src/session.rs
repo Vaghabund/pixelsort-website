@@ -38,25 +38,45 @@ impl PixelSorterApp {
         // Find USB drives (looking for common mount points on Linux/Pi)
         let usb_paths = [
             "/media/pi", // Pi OS default
+            "/media/usb", // Common mount point
             "/media", // Generic Linux
-            "/mnt", // Manual mounts
+            "/mnt/usb", // Manual mounts
+            "/mnt",
         ];
 
         let mut usb_found = false;
+        let mut last_error = String::new();
+        
         for base_path in &usb_paths {
             if let Ok(entries) = std::fs::read_dir(base_path) {
                 for entry in entries.flatten() {
                     let usb_path = entry.path();
-                    if usb_path.is_dir() {
+                    
+                    // Skip if not a directory or if it's the pi user home
+                    if !usb_path.is_dir() || usb_path.to_string_lossy().contains("/home/") {
+                        continue;
+                    }
+                    
+                    // Check if we can write to this path (indicates it's a writable USB)
+                    let test_file = usb_path.join(".pixelsort_test");
+                    if std::fs::write(&test_file, "test").is_ok() {
+                        let _ = std::fs::remove_file(&test_file);
+                        
                         // Try to copy sorted_images folder to USB
-                        let dest_path = usb_path.join("sorted_images");
-                        if let Ok(()) = self.copy_directory(
+                        let dest_path = usb_path.join("pixelsort_export");
+                        match Self::copy_directory(
                             PathBuf::from("sorted_images"),
                             dest_path.clone(),
                         ) {
-                            println!("Successfully copied to USB: {}", dest_path.display());
-                            usb_found = true;
-                            break;
+                            Ok(()) => {
+                                log::info!("Successfully copied to USB: {}", dest_path.display());
+                                usb_found = true;
+                                break;
+                            }
+                            Err(e) => {
+                                last_error = format!("Copy failed: {}", e);
+                                log::warn!("Failed to copy to {}: {}", dest_path.display(), e);
+                            }
                         }
                     }
                 }
@@ -65,14 +85,19 @@ impl PixelSorterApp {
                 }
             }
         }
+        
         if !usb_found {
-            return Err("No USB drive found or copy failed".into());
+            if last_error.is_empty() {
+                return Err("No writable USB drive found".into());
+            } else {
+                return Err(last_error.into());
+            }
         }
 
         Ok(())
     }
 
-    fn copy_directory<P: AsRef<std::path::Path>>(&self, src: P, dst: P) -> Result<(), Box<dyn std::error::Error>> {
+    fn copy_directory<P: AsRef<std::path::Path>>(src: P, dst: P) -> Result<(), Box<dyn std::error::Error>> {
         let src = src.as_ref();
         let dst = dst.as_ref();
         
@@ -87,7 +112,10 @@ impl PixelSorterApp {
             let src_path = entry.path();
             let dst_path = dst.join(entry.file_name());
 
-            if src_path.is_file() {
+            if src_path.is_dir() {
+                // Recursively copy subdirectories (session folders)
+                Self::copy_directory(&src_path, &dst_path)?;
+            } else if src_path.is_file() {
                 std::fs::copy(&src_path, &dst_path)?;
             }
         }
