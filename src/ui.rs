@@ -137,6 +137,8 @@ impl eframe::App for PixelSorterApp {
         // Update camera preview at 30 FPS if in Input phase
         if self.current_phase == Phase::Input && !self.is_processing {
             self.update_camera_preview(ctx);
+            // Request continuous repaints for smooth 30 FPS preview
+            ctx.request_repaint();
         }
 
         // Render UI based on current phase
