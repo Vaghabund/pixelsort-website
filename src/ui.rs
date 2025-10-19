@@ -9,10 +9,11 @@ use crate::camera_controller::CameraController;
 // ============================================================================
 // CONSTANTS FOR UI STYLING - Easy to modify
 // ============================================================================
-const BUTTON_HEIGHT: f32 = 70.0; // Increased for better touch
+const BUTTON_HEIGHT: f32 = 85.0; // Taller buttons for easier touch
 const BUTTON_SPACING: f32 = 15.0; // More spacing
-const HANDLE_SIZE: f32 = 23.0;
-const SLIDER_HEIGHT: f32 = 80.0; // Taller sliders
+const HANDLE_SIZE: f32 = 28.0; // Bigger crop handles
+const SLIDER_HEIGHT: f32 = 90.0; // Taller sliders
+const SLIDER_KNOB_SIZE: f32 = 32.0; // Much bigger slider knobs
 const UI_PADDING: f32 = 20.0; // Padding from screen edges
 const SLIDER_SPACING: f32 = 25.0; // Space between sliders
 
@@ -605,8 +606,16 @@ impl PixelSorterApp {
                     if touch_slider(ui, &mut self.sorting_params.threshold, 0.0..=255.0).changed() {
                         self.apply_pixel_sort(ctx);
                     }
+                    ui.add_space(4.0);
                     ui.centered_and_justified(|ui| {
-                        ui.label("Threshold");
+                        // Label with background for readability
+                        egui::Frame::none()
+                            .fill(egui::Color32::from_black_alpha(160))
+                            .rounding(4.0)
+                            .inner_margin(egui::Margin::symmetric(8.0, 4.0))
+                            .show(ui, |ui| {
+                                ui.label(egui::RichText::new("Threshold").size(16.0).color(egui::Color32::WHITE));
+                            });
                     });
                 });
             });
@@ -623,8 +632,16 @@ impl PixelSorterApp {
                         }
                         self.apply_pixel_sort(ctx);
                     }
+                    ui.add_space(4.0);
                     ui.centered_and_justified(|ui| {
-                        ui.label("Hue");
+                        // Label with background for readability
+                        egui::Frame::none()
+                            .fill(egui::Color32::from_black_alpha(160))
+                            .rounding(4.0)
+                            .inner_margin(egui::Margin::symmetric(8.0, 4.0))
+                            .show(ui, |ui| {
+                                ui.label(egui::RichText::new("Hue").size(16.0).color(egui::Color32::WHITE));
+                            });
                     });
                 });
             });
@@ -733,7 +750,7 @@ impl PixelSorterApp {
 
 /// Custom slider that shows value in a bubble only when touched/dragged
 fn touch_slider(ui: &mut egui::Ui, value: &mut f32, range: std::ops::RangeInclusive<f32>) -> egui::Response {
-    let desired_size = egui::vec2(ui.available_width() - 20.0, 20.0); // Added side padding
+    let desired_size = egui::vec2(ui.available_width() - 20.0, SLIDER_KNOB_SIZE); // Use constant for knob size
     let (rect, mut response) = ui.allocate_exact_size(desired_size, egui::Sense::click_and_drag());
     
     // Add horizontal padding
@@ -742,8 +759,8 @@ fn touch_slider(ui: &mut egui::Ui, value: &mut f32, range: std::ops::RangeInclus
     if ui.is_rect_visible(rect) {
         let visuals = ui.style().interact(&response);
         
-        // Background rail
-        let rail_rect = rect.shrink2(egui::vec2(0.0, rect.height() * 0.25));
+        // Background rail (thicker for bigger knob)
+        let rail_rect = rect.shrink2(egui::vec2(0.0, rect.height() * 0.3));
         ui.painter().rect(
             rail_rect,
             rail_rect.height() / 2.0,
@@ -789,37 +806,44 @@ fn touch_slider(ui: &mut egui::Ui, value: &mut f32, range: std::ops::RangeInclus
             );
         }
         
-        // Knob/handle
+        // Bigger knob/handle
         let knob_pos = rect.left() + rect.width() * normalized;
         let knob_center = egui::pos2(knob_pos, rect.center().y);
-        let knob_radius = rect.height() * 0.8;
+        let knob_radius = SLIDER_KNOB_SIZE / 2.0; // Use full knob size constant
         
+        // Draw knob with shadow for depth
+        ui.painter().circle(
+            knob_center + egui::vec2(1.0, 1.0),
+            knob_radius,
+            egui::Color32::from_black_alpha(40),
+            egui::Stroke::NONE,
+        );
         ui.painter().circle(
             knob_center,
             knob_radius,
             visuals.bg_fill,
-            visuals.fg_stroke,
+            egui::Stroke::new(2.0, visuals.fg_stroke.color),
         );
         
         // Show value bubble ONLY when actively dragging (not just hovering)
         // Use a layer to ensure it's always on top
         if response.dragged() {
             let text = format!("{:.0}", value);
-            let font_id = egui::FontId::proportional(16.0);
-            let galley = ui.painter().layout_no_wrap(text, font_id.clone(), visuals.text_color());
+            let font_id = egui::FontId::proportional(20.0); // Bigger text
+            let galley = ui.painter().layout_no_wrap(text, font_id.clone(), egui::Color32::WHITE);
             
             // Bubble background
-            let bubble_size = galley.size() + egui::vec2(16.0, 10.0);
-            let bubble_pos = egui::pos2(knob_pos - bubble_size.x / 2.0, rect.top() - bubble_size.y - 12.0);
+            let bubble_size = galley.size() + egui::vec2(20.0, 14.0); // More padding
+            let bubble_pos = egui::pos2(knob_pos - bubble_size.x / 2.0, rect.top() - bubble_size.y - 16.0);
             let bubble_rect = egui::Rect::from_min_size(bubble_pos, bubble_size);
             
             // Draw on a higher layer to ensure visibility
             let layer_id = egui::LayerId::new(egui::Order::Tooltip, egui::Id::new("slider_bubble"));
             ui.ctx().layer_painter(layer_id).rect(
                 bubble_rect,
-                5.0,
-                egui::Color32::from_rgb(40, 40, 45),
-                egui::Stroke::new(1.0, egui::Color32::from_rgb(100, 100, 110)),
+                6.0, // More rounded
+                egui::Color32::from_rgb(50, 50, 55),
+                egui::Stroke::new(2.0, egui::Color32::from_rgb(120, 120, 130)),
             );
             
             // Text
