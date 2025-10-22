@@ -69,6 +69,11 @@ pub struct PixelSorterApp {
     pub exit_tap_count: u32,
     pub exit_tap_last_time: Option<Instant>,
     
+    // Sleep mode (power saving after idle)
+    pub is_sleeping: bool,
+    pub last_interaction_time: Instant,
+    pub sleep_logo: Option<egui::TextureHandle>,
+    
     // Other
     pub tint_enabled: bool,
 }
@@ -128,6 +133,9 @@ impl PixelSorterApp {
             splash_logo: None,
             exit_tap_count: 0,
             exit_tap_last_time: None,
+            is_sleeping: false,
+            last_interaction_time: Instant::now(),
+            sleep_logo: None,
             tint_enabled: false,
         }
     }
@@ -212,6 +220,36 @@ impl eframe::App for PixelSorterApp {
                     return;
                 }
             }
+        }
+        
+        // Check for user interaction to wake from sleep or reset idle timer
+        let has_interaction = ctx.input(|i| {
+            i.pointer.any_pressed() || 
+            i.pointer.any_down() || 
+            i.pointer.is_moving() ||
+            !i.events.is_empty()
+        });
+        
+        if has_interaction {
+            if self.is_sleeping {
+                // Wake up from sleep
+                self.is_sleeping = false;
+            }
+            // Reset idle timer on any interaction
+            self.last_interaction_time = Instant::now();
+        }
+        
+        // Check if we should enter sleep mode (5 minutes = 300 seconds)
+        let idle_duration = self.last_interaction_time.elapsed().as_secs();
+        if !self.is_sleeping && idle_duration >= 300 {
+            self.is_sleeping = true;
+        }
+        
+        // If sleeping, show sleep screen instead of normal UI
+        if self.is_sleeping {
+            self.render_sleep_screen(ctx);
+            ctx.request_repaint(); // Keep checking for wake-up
+            return;
         }
         
         // Update camera preview at 30 FPS if in Input phase
@@ -313,6 +351,77 @@ impl PixelSorterApp {
                     center.y + 120.0,
                 );
                 ui.painter().galley(text_pos, galley);
+            });
+    }
+
+    fn render_sleep_screen(&mut self, ctx: &egui::Context) {
+        // Load logo texture if not loaded yet (reuse splash logo or load separately)
+        if self.sleep_logo.is_none() {
+            if let Ok(img) = image::open("assets/Harpy_ICON.png") {
+                let rgba = img.to_rgba8();
+                let size = [rgba.width() as usize, rgba.height() as usize];
+                let pixels = rgba.as_flat_samples();
+                let color_image = egui::ColorImage::from_rgba_unmultiplied(size, pixels.as_slice());
+                self.sleep_logo = Some(ctx.load_texture("sleep_logo", color_image, Default::default()));
+            }
+        }
+
+        egui::CentralPanel::default()
+            .frame(egui::Frame::none())
+            .show(ctx, |ui| {
+                let screen_rect = ui.max_rect();
+                
+                // Dark background (very dark grey for OLED power saving)
+                ui.painter().rect_filled(
+                    screen_rect,
+                    0.0,
+                    egui::Color32::from_rgb(10, 10, 10),
+                );
+
+                // Center content
+                let center = screen_rect.center();
+                
+                // Draw logo (dim for sleep mode)
+                if let Some(logo_texture) = &self.sleep_logo {
+                    let logo_size = 200.0; // Slightly smaller than splash
+                    let logo_rect = egui::Rect::from_center_size(
+                        egui::pos2(center.x, center.y - 40.0),
+                        egui::vec2(logo_size, logo_size),
+                    );
+                    
+                    // Dim logo (50% opacity)
+                    let tint = egui::Color32::from_white_alpha(128);
+                    ui.painter().image(
+                        logo_texture.id(),
+                        logo_rect,
+                        egui::Rect::from_min_max(egui::pos2(0.0, 0.0), egui::pos2(1.0, 1.0)),
+                        tint,
+                    );
+                }
+
+                // Draw "Harpy" text below logo
+                let text = "Harpy";
+                let font_id = egui::FontId::proportional(42.0);
+                let text_color = egui::Color32::from_white_alpha(128); // Dim text
+                let galley = ui.painter().layout_no_wrap(text.to_string(), font_id, text_color);
+                
+                let text_pos = egui::pos2(
+                    center.x - galley.size().x / 2.0,
+                    center.y + 100.0,
+                );
+                ui.painter().galley(text_pos, galley);
+                
+                // Draw "Touch to wake" hint
+                let hint_text = "Touch to wake";
+                let hint_font = egui::FontId::proportional(18.0);
+                let hint_color = egui::Color32::from_white_alpha(80); // Very dim
+                let hint_galley = ui.painter().layout_no_wrap(hint_text.to_string(), hint_font, hint_color);
+                
+                let hint_pos = egui::pos2(
+                    center.x - hint_galley.size().x / 2.0,
+                    center.y + 160.0,
+                );
+                ui.painter().galley(hint_pos, hint_galley);
             });
     }
 
