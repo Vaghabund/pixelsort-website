@@ -42,6 +42,9 @@ async fn main() -> Result<()> {
         }
     };
 
+    // Load application icon
+    let icon_data = load_icon();
+    
     // WINDOWED MODE: Normal window with decorations for manual resizing
     let options = eframe::NativeOptions {
         viewport: egui::ViewportBuilder::default()
@@ -51,7 +54,8 @@ async fn main() -> Result<()> {
             .with_resizable(true)                 // Can be resized
             .with_close_button(true)              // Show close button
             .with_minimize_button(true)           // Show minimize button
-            .with_maximize_button(true),          // Show maximize button
+            .with_maximize_button(true)           // Show maximize button
+            .with_icon(icon_data),                // Set window icon
         ..Default::default()
     };
 
@@ -105,4 +109,45 @@ fn setup_touch_style(ctx: &egui::Context) {
     style.spacing.combo_width = 200.0;
     
     ctx.set_style(style);
+}
+
+fn load_icon() -> egui::IconData {
+    // Try to load icon from file, fallback to embedded default
+    let icon_path = "assets/Harpiye_ICON.png";
+    
+    match image::open(icon_path) {
+        Ok(img) => {
+            let rgba = img.to_rgba8();
+            let (width, height) = rgba.dimensions();
+            egui::IconData {
+                rgba: rgba.into_raw(),
+                width,
+                height,
+            }
+        }
+        Err(_) => {
+            // Fallback: Create a simple colored square as default icon
+            log::warn!("Could not load icon from {}, using default", icon_path);
+            let width = 64;
+            let height = 64;
+            let mut rgba = vec![0u8; (width * height * 4) as usize];
+            
+            // Create a simple gradient icon
+            for y in 0..height {
+                for x in 0..width {
+                    let idx = ((y * width + x) * 4) as usize;
+                    rgba[idx] = (x * 255 / width) as u8;      // R
+                    rgba[idx + 1] = (y * 255 / height) as u8; // G
+                    rgba[idx + 2] = 150;                       // B
+                    rgba[idx + 3] = 255;                       // A
+                }
+            }
+            
+            egui::IconData {
+                rgba,
+                width,
+                height,
+            }
+        }
+    }
 }
