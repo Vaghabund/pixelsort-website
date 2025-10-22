@@ -60,6 +60,11 @@ pub struct PixelSorterApp {
     pub export_message: Option<String>,
     pub export_message_time: Option<Instant>,
     
+    // Splash screen
+    pub show_splash: bool,
+    pub splash_start_time: Option<Instant>,
+    pub splash_logo: Option<egui::TextureHandle>,
+    
     // Other
     pub tint_enabled: bool,
 }
@@ -114,6 +119,9 @@ impl PixelSorterApp {
             current_session_folder: None,
             export_message: None,
             export_message_time: None,
+            show_splash: true,
+            splash_start_time: Some(Instant::now()),
+            splash_logo: None,
             tint_enabled: false,
         }
     }
@@ -149,6 +157,20 @@ impl PixelSorterApp {
 
 impl eframe::App for PixelSorterApp {
     fn update(&mut self, ctx: &egui::Context, _frame: &mut eframe::Frame) {
+        // Show splash screen for 2 seconds
+        if self.show_splash {
+            if let Some(start_time) = self.splash_start_time {
+                let elapsed = start_time.elapsed().as_secs_f32();
+                if elapsed > 2.0 {
+                    self.show_splash = false;
+                } else {
+                    self.render_splash_screen(ctx, elapsed);
+                    ctx.request_repaint(); // Keep repainting for fade effect
+                    return;
+                }
+            }
+        }
+        
         // Update camera preview at 30 FPS if in Input phase
         if self.current_phase == Phase::Input && !self.is_processing {
             self.update_camera_preview(ctx);
@@ -179,6 +201,76 @@ impl PixelSorterApp {
                 }
             }
         }
+    }
+
+    fn render_splash_screen(&mut self, ctx: &egui::Context, elapsed: f32) {
+        // Load logo texture if not loaded yet
+        if self.splash_logo.is_none() {
+            if let Ok(img) = image::open("assets/Harpiye_ICON.png") {
+                let rgba = img.to_rgba8();
+                let size = [rgba.width() as usize, rgba.height() as usize];
+                let pixels = rgba.as_flat_samples();
+                let color_image = egui::ColorImage::from_rgba_unmultiplied(size, pixels.as_slice());
+                self.splash_logo = Some(ctx.load_texture("splash_logo", color_image, Default::default()));
+            }
+        }
+
+        // Calculate fade alpha (fade in first 0.3s, stay visible, fade out last 0.5s)
+        let alpha = if elapsed < 0.3 {
+            // Fade in
+            elapsed / 0.3
+        } else if elapsed > 1.5 {
+            // Fade out
+            (2.0 - elapsed) / 0.5
+        } else {
+            // Fully visible
+            1.0
+        };
+
+        egui::CentralPanel::default()
+            .frame(egui::Frame::none())
+            .show(ctx, |ui| {
+                let screen_rect = ui.max_rect();
+                
+                // Black background
+                ui.painter().rect_filled(
+                    screen_rect,
+                    0.0,
+                    egui::Color32::BLACK,
+                );
+
+                // Center content
+                let center = screen_rect.center();
+                
+                // Draw logo
+                if let Some(logo_texture) = &self.splash_logo {
+                    let logo_size = 256.0; // Size of the logo
+                    let logo_rect = egui::Rect::from_center_size(
+                        egui::pos2(center.x, center.y - 40.0),
+                        egui::vec2(logo_size, logo_size),
+                    );
+                    
+                    let tint = egui::Color32::from_white_alpha((alpha * 255.0) as u8);
+                    ui.painter().image(
+                        logo_texture.id(),
+                        logo_rect,
+                        egui::Rect::from_min_max(egui::pos2(0.0, 0.0), egui::pos2(1.0, 1.0)),
+                        tint,
+                    );
+                }
+
+                // Draw "Harpy" text below logo
+                let text = "Harpy";
+                let font_id = egui::FontId::proportional(48.0);
+                let text_color = egui::Color32::from_white_alpha((alpha * 255.0) as u8);
+                let galley = ui.painter().layout_no_wrap(text.to_string(), font_id, text_color);
+                
+                let text_pos = egui::pos2(
+                    center.x - galley.size().x / 2.0,
+                    center.y + 120.0,
+                );
+                ui.painter().galley(text_pos, galley);
+            });
     }
 
     fn render_ui(&mut self, ctx: &egui::Context) {

@@ -113,7 +113,7 @@ fn setup_touch_style(ctx: &egui::Context) {
 
 fn load_icon() -> egui::IconData {
     // Try to load icon from file, fallback to embedded default
-    let icon_path = "assets/Harpiye_ICON.png";
+    let icon_path = "assets/Harpy_ICON.png";
     
     match image::open(icon_path) {
         Ok(img) => {
