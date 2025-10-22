@@ -163,8 +163,9 @@ impl PixelSorterApp {
 
 impl eframe::App for PixelSorterApp {
     fn update(&mut self, ctx: &egui::Context, _frame: &mut eframe::Frame) {
-        // Hide cursor in kiosk mode
+        // Hide cursor in kiosk mode - force it every frame
         ctx.set_cursor_icon(egui::CursorIcon::None);
+        ctx.output_mut(|o| o.cursor_icon = egui::CursorIcon::None);
         
         // ESC key to exit (for debugging in kiosk mode with keyboard)
         if ctx.input(|i| i.key_pressed(egui::Key::Escape)) {
@@ -664,8 +665,8 @@ impl PixelSorterApp {
     // PHASE 1: INPUT - Two circles in right bottom corner
     // ============================================================================
     fn render_input_buttons_circular(&mut self, ctx: &egui::Context, screen_rect: egui::Rect) {
-        const LARGE_BUTTON_RADIUS: f32 = 100.0;  // Take Picture (larger for primary action)
-        const SMALL_BUTTON_RADIUS: f32 = 50.0;   // Upload Image
+        const LARGE_BUTTON_RADIUS: f32 = 120.0;  // Take Picture (even larger for primary action)
+        const SMALL_BUTTON_RADIUS: f32 = 60.0;   // Upload Image
         const SPACING: f32 = 20.0;
         
         // Calculate positions - right bottom corner alignment
@@ -703,8 +704,8 @@ impl PixelSorterApp {
     // PHASE 2: EDIT - Horizontal sliders on right, buttons on left in two rows
     // ============================================================================
     fn render_edit_buttons_circular(&mut self, ctx: &egui::Context, screen_rect: egui::Rect) {
-        const BUTTON_RADIUS: f32 = 80.0;  // Larger buttons for better touch targets
-        const SLIDER_WIDTH: f32 = 60.0;
+        const BUTTON_RADIUS: f32 = 100.0;  // Even larger buttons for better touch targets
+        const SLIDER_WIDTH: f32 = 80.0;    // Wider sliders with bigger handles
         const SLIDER_HEIGHT: f32 = 300.0;
         const SPACING: f32 = 20.0;
         
@@ -782,7 +783,7 @@ impl PixelSorterApp {
                 .order(egui::Order::Foreground)
                 .show(ctx, |ui| {
                     if self.circular_button_styled(ui, BUTTON_RADIUS * 0.7, "USB", "export",
-                        egui::Color32::from_rgb(40, 80, 40)) {
+                        egui::Color32::from_rgba_unmultiplied(40, 80, 40, 180)) {
                         match self.copy_to_usb() {
                             Ok(()) => {
                                 self.export_message = Some("✓ Exported to USB!".to_string());
@@ -802,7 +803,7 @@ impl PixelSorterApp {
     // PHASE 3: CROP - Vertical sliders on right, Cancel/Apply on left
     // ============================================================================
     fn render_crop_buttons_circular(&mut self, ctx: &egui::Context, screen_rect: egui::Rect) {
-        const BUTTON_RADIUS: f32 = 80.0;  // Larger buttons for better touch targets
+        const BUTTON_RADIUS: f32 = 100.0;  // Even larger buttons for better touch targets
         const SPACING: f32 = 20.0;
         
         // Left side: Two buttons stacked vertically
@@ -819,7 +820,7 @@ impl PixelSorterApp {
             .order(egui::Order::Foreground)
             .show(ctx, |ui| {
                 if self.circular_button_styled(ui, BUTTON_RADIUS, "Cancel", "cancel",
-                    egui::Color32::from_rgb(80, 40, 40)) {
+                    egui::Color32::from_rgba_unmultiplied(80, 40, 40, 180)) {
                     self.current_phase = Phase::Edit;
                     self.crop_rect = None;
                 }
@@ -834,7 +835,7 @@ impl PixelSorterApp {
             .order(egui::Order::Foreground)
             .show(ctx, |ui| {
                 if self.circular_button_styled(ui, BUTTON_RADIUS, "Apply", "apply",
-                    egui::Color32::from_rgb(40, 80, 40)) {
+                    egui::Color32::from_rgba_unmultiplied(40, 80, 40, 180)) {
                     self.apply_crop_and_sort(ctx);
                 }
             });
@@ -845,11 +846,11 @@ impl PixelSorterApp {
     // ============================================================================
     fn render_vertical_sliders(&mut self, ctx: &egui::Context, screen_rect: egui::Rect, 
                                 slider_width: f32, _slider_height: f32, spacing: f32) {
-        // Place sliders side by side on the right edge
-        let slider_spacing = spacing;
+        // Place sliders side by side on the right edge with more space between them
+        let slider_spacing = spacing * 3.0;  // Triple the spacing between sliders
         
         // More padding at top and bottom to prevent handle cutoff
-        let knob_radius = slider_width * 0.6; // Same calculation as in vertical_slider
+        let knob_radius = slider_width * 0.8; // Same calculation as in vertical_slider (updated to 0.8)
         let top_padding = spacing * 3.0 + knob_radius; // Extra space for top handle
         let bottom_padding = spacing * 5.0; // Extra space for label and bottom handle
         
@@ -992,13 +993,13 @@ fn vertical_slider(ui: &mut egui::Ui, value: &mut f32, range: std::ops::RangeInc
     if ui.is_rect_visible(rect) {
         let painter = ui.painter();
         
-        // Background rail
+        // Background rail (semi-transparent)
         let rail_rect = rect.shrink2(egui::vec2(width * 0.3, 0.0));
         painter.rect(
             rail_rect,
             rail_rect.width() / 2.0,
-            egui::Color32::from_rgb(40, 40, 45),
-            egui::Stroke::new(2.0, egui::Color32::from_rgb(80, 80, 90)),
+            egui::Color32::from_rgba_unmultiplied(40, 40, 45, 180),
+            egui::Stroke::new(2.0, egui::Color32::from_rgba_unmultiplied(80, 80, 90, 180)),
         );
         
         // Calculate normalized position (inverted for vertical)
@@ -1027,30 +1028,30 @@ fn vertical_slider(ui: &mut egui::Ui, value: &mut f32, range: std::ops::RangeInc
             painter.rect(
                 filled_rect,
                 rail_rect.width() / 2.0,
-                egui::Color32::from_rgb(80, 120, 200),
+                egui::Color32::from_rgba_unmultiplied(80, 120, 200, 200),
                 egui::Stroke::NONE,
             );
         }
         
-        // Knob/handle
+        // Knob/handle (larger for better touch)
         let knob_y = rect.bottom() - rect.height() * normalized;
         let knob_center = egui::pos2(rect.center().x, knob_y);
-        let knob_radius = width * 0.6;
+        let knob_radius = width * 0.8;  // Increased from 0.6 to 0.8 for bigger handle
         
-        // Draw knob shadow
+        // Draw knob shadow (larger)
         painter.circle(
-            knob_center + egui::vec2(2.0, 2.0),
+            knob_center + egui::vec2(3.0, 3.0),
             knob_radius,
-            egui::Color32::from_black_alpha(60),
+            egui::Color32::from_black_alpha(80),
             egui::Stroke::NONE,
         );
         
-        // Draw knob
+        // Draw knob (semi-transparent)
         painter.circle(
             knob_center,
             knob_radius,
-            egui::Color32::from_rgb(200, 200, 210),
-            egui::Stroke::new(2.0, egui::Color32::from_rgb(100, 100, 110)),
+            egui::Color32::from_rgba_unmultiplied(200, 200, 210, 200),
+            egui::Stroke::new(3.0, egui::Color32::from_rgba_unmultiplied(100, 100, 110, 200)),
         );
         
         // Show value bubble when dragging (on top layer to avoid clipping)
