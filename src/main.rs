@@ -51,7 +51,6 @@ async fn main() -> Result<()> {
             .with_fullscreen(true)                // Start in fullscreen
             .with_decorations(false)              // No title bar or borders
             .with_resizable(false)                // Cannot be resized
-            .with_cursor_visible(false)           // Hide mouse cursor
             .with_icon(icon_data),                // Set window icon
         ..Default::default()
     };

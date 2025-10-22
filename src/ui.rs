@@ -163,6 +163,9 @@ impl PixelSorterApp {
 
 impl eframe::App for PixelSorterApp {
     fn update(&mut self, ctx: &egui::Context, _frame: &mut eframe::Frame) {
+        // Hide cursor in kiosk mode
+        ctx.set_cursor_icon(egui::CursorIcon::None);
+        
         // ESC key to exit (for debugging in kiosk mode with keyboard)
         if ctx.input(|i| i.key_pressed(egui::Key::Escape)) {
             ctx.send_viewport_cmd(egui::ViewportCommand::Close);
