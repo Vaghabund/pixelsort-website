@@ -35,9 +35,22 @@ fi
 echo "Starting Pixel Sorter..."
 echo "=========================================="
 
-# Run the application (release mode for better performance)
-# cargo run will automatically rebuild only if needed
-cargo run --release
+# Check if cargo is available for rebuilding if needed
+if command -v cargo &> /dev/null; then
+    # Rebuild only if source files changed
+    cargo build --release
+    BINARY="$APP_DIR/target/release/pixelsort-pi"
+else
+    # No cargo available, use existing binary
+    BINARY="$APP_DIR/target/release/pixelsort-pi"
+    if [ ! -f "$BINARY" ]; then
+        echo "ERROR: Binary not found and cargo not available!"
+        exit 1
+    fi
+fi
+
+# Run the application
+"$BINARY"
 
 # If app exits, wait a moment before this script ends
 echo ""
