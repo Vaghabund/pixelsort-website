@@ -9,13 +9,8 @@ use crate::camera_controller::CameraController;
 // ============================================================================
 // CONSTANTS FOR UI STYLING - Easy to modify
 // ============================================================================
-const BUTTON_HEIGHT: f32 = 85.0; // Taller buttons for easier touch
-const BUTTON_SPACING: f32 = 15.0; // More spacing
 const HANDLE_SIZE: f32 = 28.0; // Bigger crop handles
-const SLIDER_HEIGHT: f32 = 90.0; // Taller sliders
-const SLIDER_KNOB_SIZE: f32 = 32.0; // Much bigger slider knobs
 const UI_PADDING: f32 = 20.0; // Padding from screen edges
-const SLIDER_SPACING: f32 = 25.0; // Space between sliders
 
 // ============================================================================
 // ENUMS
@@ -518,222 +513,326 @@ impl PixelSorterApp {
 }
 
 // ============================================================================
-// BUTTON ZONE RENDERING (OVERLAY)
+// BUTTON ZONE RENDERING (OVERLAY) - UPDATED FOR CIRCULAR TOUCH UI
 // ============================================================================
 
 impl PixelSorterApp {
     fn render_button_overlay(&mut self, _ui: &mut egui::Ui, ctx: &egui::Context, screen_rect: egui::Rect) {
-        // Calculate button zone height based on current phase
-        let button_zone_height = match self.current_phase {
-            Phase::Input => BUTTON_HEIGHT + BUTTON_SPACING * 2.0 + UI_PADDING * 2.0,
-            Phase::Crop => BUTTON_HEIGHT + BUTTON_SPACING * 2.0 + UI_PADDING * 2.0,
-            Phase::Edit => {
-                let base_height = (BUTTON_HEIGHT + SLIDER_HEIGHT) + BUTTON_SPACING * 3.0 + UI_PADDING * 2.0;
-                if self.usb_present() {
-                    base_height + BUTTON_HEIGHT + BUTTON_SPACING
-                } else {
-                    base_height
-                }
-            }
-        };
-
-        // Create a floating area at the bottom of the screen with padding
-        let area_rect = egui::Rect::from_min_size(
-            egui::pos2(UI_PADDING, screen_rect.max.y - button_zone_height - UI_PADDING),
-            egui::vec2(screen_rect.width() - UI_PADDING * 2.0, button_zone_height),
-        );
-
-        egui::Area::new("button_overlay")
-            .fixed_pos(area_rect.min)
-            .order(egui::Order::Foreground)
-            .show(ctx, |ui| {
-                // Semi-transparent dark background
-                let bg_rect = egui::Rect::from_min_size(
-                    egui::Pos2::ZERO,
-                    egui::vec2(screen_rect.width() - UI_PADDING * 2.0, button_zone_height),
-                );
-                ui.painter().rect_filled(
-                    bg_rect,
-                    8.0, // Rounded corners
-                    egui::Color32::from_black_alpha(200),
-                );
-
-                // Set fixed size for button area
-                ui.set_width(screen_rect.width() - UI_PADDING * 2.0);
-                ui.set_height(button_zone_height);
-
-                ui.vertical_centered(|ui| {
-                    ui.add_space(UI_PADDING);
-                    
-                    match self.current_phase {
-                        Phase::Input => self.render_input_buttons(ui, ctx),
-                        Phase::Edit => self.render_edit_buttons(ui, ctx),
-                        Phase::Crop => self.render_crop_buttons(ui, ctx),
-                    }
-                    
-                    ui.add_space(UI_PADDING);
-                });
-            });
-    }
-
-    fn render_input_buttons(&mut self, ui: &mut egui::Ui, ctx: &egui::Context) {
-        ui.horizontal(|ui| {
-            ui.spacing_mut().item_spacing.x = 0.0;
-            let total_width = ui.available_width();
-            let button_width = (total_width - BUTTON_SPACING) / 2.0;
-            
-            if ui.add_sized(egui::vec2(button_width, BUTTON_HEIGHT), egui::Button::new("Take Picture")).clicked() {
-                self.capture_and_sort(ctx);
-            }
-            
-            ui.add_space(BUTTON_SPACING);
-            
-            if ui.add_sized(egui::vec2(button_width, BUTTON_HEIGHT), egui::Button::new("Upload Image")).clicked() {
-                self.load_image(ctx);
-            }
-        });
-    }
-
-    fn render_edit_buttons(&mut self, ui: &mut egui::Ui, ctx: &egui::Context) {
-        // Row 1: Two sliders side by side with more space between them
-        ui.horizontal(|ui| {
-            let available_width = ui.available_width();
-            let slider_width = (available_width - SLIDER_SPACING) / 2.0;
-            
-            // Left: Threshold slider
-            ui.allocate_ui(egui::vec2(slider_width, SLIDER_HEIGHT), |ui| {
-                ui.vertical(|ui| {
-                    if touch_slider(ui, &mut self.sorting_params.threshold, 0.0..=255.0).changed() {
-                        self.apply_pixel_sort(ctx);
-                    }
-                    ui.add_space(4.0);
-                    ui.centered_and_justified(|ui| {
-                        // Label with background for readability
-                        egui::Frame::none()
-                            .fill(egui::Color32::from_black_alpha(160))
-                            .rounding(4.0)
-                            .inner_margin(egui::Margin::symmetric(8.0, 4.0))
-                            .show(ui, |ui| {
-                                ui.label(egui::RichText::new("Threshold").size(16.0).color(egui::Color32::WHITE));
-                            });
-                    });
-                });
-            });
-            
-            ui.add_space(SLIDER_SPACING);
-            
-            // Right: Tint (Hue) slider
-            ui.allocate_ui(egui::vec2(slider_width, SLIDER_HEIGHT), |ui| {
-                ui.vertical(|ui| {
-                    let slider_response = touch_slider(ui, &mut self.sorting_params.color_tint, 0.0..=360.0);
-                    if slider_response.changed() {
-                        if !self.tint_enabled && self.sorting_params.color_tint > 0.0 {
-                            self.tint_enabled = true;
-                        }
-                        self.apply_pixel_sort(ctx);
-                    }
-                    ui.add_space(4.0);
-                    ui.centered_and_justified(|ui| {
-                        // Label with background for readability
-                        egui::Frame::none()
-                            .fill(egui::Color32::from_black_alpha(160))
-                            .rounding(4.0)
-                            .inner_margin(egui::Margin::symmetric(8.0, 4.0))
-                            .show(ui, |ui| {
-                                ui.label(egui::RichText::new("Hue").size(16.0).color(egui::Color32::WHITE));
-                            });
-                    });
-                });
-            });
-        });
-
-        ui.add_space(BUTTON_SPACING);
-
-        // Row 2: All buttons in one row
-        ui.horizontal(|ui| {
-            ui.spacing_mut().item_spacing.x = 0.0; // Remove default spacing
-            let total_width = ui.available_width();
-            let spacing_width = BUTTON_SPACING * 4.0; // Manual spacing between 5 buttons
-            let button_width = (total_width - spacing_width) / 5.0;
-            
-            // Mode buttons (lighter - default styling)
-            if ui.add_sized(egui::vec2(button_width, BUTTON_HEIGHT), egui::Button::new(self.current_algorithm.name())).clicked() {
-                self.cycle_algorithm();
-                self.apply_pixel_sort(ctx);
-            }
-            
-            ui.add_space(BUTTON_SPACING);
-            
-            if ui.add_sized(egui::vec2(button_width, BUTTON_HEIGHT), egui::Button::new(self.sorting_params.sort_mode.name())).clicked() {
-                self.sorting_params.sort_mode = self.sorting_params.sort_mode.next();
-                self.apply_pixel_sort(ctx);
-            }
-            
-            ui.add_space(BUTTON_SPACING);
-            
-            // Action buttons (darker)
-            let action_button = egui::Button::new("Crop").fill(egui::Color32::from_rgb(60, 60, 70));
-            if ui.add_sized(egui::vec2(button_width, BUTTON_HEIGHT), action_button).clicked() {
-                self.current_phase = Phase::Crop;
-                self.crop_rect = None; // Reset crop
-            }
-            
-            ui.add_space(BUTTON_SPACING);
-            
-            let action_button = egui::Button::new("Save & Iterate").fill(egui::Color32::from_rgb(60, 60, 70));
-            if ui.add_sized(egui::vec2(button_width, BUTTON_HEIGHT), action_button).clicked() {
-                self.save_and_continue_iteration(ctx);
-            }
-            
-            ui.add_space(BUTTON_SPACING);
-            
-            let action_button = egui::Button::new("New Image").fill(egui::Color32::from_rgb(60, 60, 70));
-            if ui.add_sized(egui::vec2(button_width, BUTTON_HEIGHT), action_button).clicked() {
-                self.start_new_photo_session();
-            }
-        });
-
-        ui.add_space(BUTTON_SPACING);
-
-        // Row 3: Export button (if USB present)
-        if self.usb_present() {
-            ui.horizontal(|ui| {
-                if equal_button(ui, "Export to USB", BUTTON_HEIGHT, 1).clicked() {
-                    match self.copy_to_usb() {
-                        Ok(()) => {
-                            self.export_message = Some("✓ Exported to USB!".to_string());
-                            self.export_message_time = Some(Instant::now());
-                        }
-                        Err(e) => {
-                            self.export_message = Some(format!("✗ Export failed: {}", e));
-                            self.export_message_time = Some(Instant::now());
-                        }
-                    }
-                }
-            });
+        // No background panel needed - buttons float directly
+        match self.current_phase {
+            Phase::Input => self.render_input_buttons_circular(ctx, screen_rect),
+            Phase::Edit => self.render_edit_buttons_circular(ctx, screen_rect),
+            Phase::Crop => self.render_crop_buttons_circular(ctx, screen_rect),
         }
     }
 
-    fn render_crop_buttons(&mut self, ui: &mut egui::Ui, ctx: &egui::Context) {
-        // Simple crop controls: Cancel and Apply
-        ui.horizontal(|ui| {
-            ui.spacing_mut().item_spacing.x = 0.0; // Remove default spacing
-            let total_width = ui.available_width();
-            let button_width = (total_width - BUTTON_SPACING) / 2.0;
-            
-            let action_button = egui::Button::new("Cancel").fill(egui::Color32::from_rgb(60, 60, 70));
-            if ui.add_sized(egui::vec2(button_width, BUTTON_HEIGHT), action_button).clicked() {
-                self.current_phase = Phase::Edit;
-                self.crop_rect = None;
+    // ============================================================================
+    // PHASE 1: INPUT - Two circles in right bottom corner
+    // ============================================================================
+    fn render_input_buttons_circular(&mut self, ctx: &egui::Context, screen_rect: egui::Rect) {
+        const LARGE_BUTTON_RADIUS: f32 = 80.0;  // Take Picture (double size)
+        const SMALL_BUTTON_RADIUS: f32 = 40.0;  // Upload Image
+        const SPACING: f32 = 20.0;
+        
+        // Calculate positions - right bottom corner alignment
+        let large_center = egui::pos2(
+            screen_rect.max.x - LARGE_BUTTON_RADIUS - SPACING,
+            screen_rect.max.y - LARGE_BUTTON_RADIUS - SPACING,
+        );
+        
+        let small_center = egui::pos2(
+            screen_rect.max.x - SMALL_BUTTON_RADIUS - SPACING,
+            large_center.y - LARGE_BUTTON_RADIUS - SMALL_BUTTON_RADIUS - SPACING,
+        );
+        
+        // Draw buttons using Area widgets
+        egui::Area::new("take_picture_btn")
+            .fixed_pos(large_center - egui::vec2(LARGE_BUTTON_RADIUS, LARGE_BUTTON_RADIUS))
+            .order(egui::Order::Foreground)
+            .show(ctx, |ui| {
+                if self.circular_button(ui, LARGE_BUTTON_RADIUS, "", "take_pic") {
+                    self.capture_and_sort(ctx);
+                }
+            });
+        
+        egui::Area::new("upload_btn")
+            .fixed_pos(small_center - egui::vec2(SMALL_BUTTON_RADIUS, SMALL_BUTTON_RADIUS))
+            .order(egui::Order::Foreground)
+            .show(ctx, |ui| {
+                if self.circular_button(ui, SMALL_BUTTON_RADIUS, "Upload", "upload_img") {
+                    self.load_image(ctx);
+                }
+            });
+    }
+
+    // ============================================================================
+    // PHASE 2: EDIT - Horizontal sliders on right, buttons on left in two rows
+    // ============================================================================
+    fn render_edit_buttons_circular(&mut self, ctx: &egui::Context, screen_rect: egui::Rect) {
+        const BUTTON_RADIUS: f32 = 50.0;
+        const SLIDER_WIDTH: f32 = 60.0;
+        const SLIDER_HEIGHT: f32 = 300.0;
+        const SPACING: f32 = 20.0;
+        
+        // Right side: Horizontal sliders (side by side)
+        self.render_vertical_sliders(ctx, screen_rect, SLIDER_WIDTH, SLIDER_HEIGHT, SPACING);
+        
+        // Left side: Buttons in two rows, aligned to left border
+        // Row 1: Algorithm and Sort Mode buttons (top row) - 2 buttons
+        let row1_y = screen_rect.max.y - BUTTON_RADIUS * 4.0 - SPACING * 3.0;
+        
+        // Algorithm button (left)
+        egui::Area::new("algo_btn")
+            .fixed_pos(egui::pos2(SPACING, row1_y))
+            .order(egui::Order::Foreground)
+            .show(ctx, |ui| {
+                if self.circular_button(ui, BUTTON_RADIUS, self.current_algorithm.name(), "algo") {
+                    self.cycle_algorithm();
+                    self.apply_pixel_sort(ctx);
+                }
+            });
+        
+        // Sort Mode button (right of Algorithm)
+        egui::Area::new("mode_btn")
+            .fixed_pos(egui::pos2(SPACING + BUTTON_RADIUS * 2.0 + SPACING, row1_y))
+            .order(egui::Order::Foreground)
+            .show(ctx, |ui| {
+                if self.circular_button(ui, BUTTON_RADIUS, self.sorting_params.sort_mode.name(), "mode") {
+                    self.sorting_params.sort_mode = self.sorting_params.sort_mode.next();
+                    self.apply_pixel_sort(ctx);
+                }
+            });
+        
+        // Row 2: Action buttons (bottom row) - Crop, Save, New - 3 buttons
+        let row2_y = screen_rect.max.y - BUTTON_RADIUS * 2.0 - SPACING;
+        
+        // Crop button (left)
+        egui::Area::new("crop_btn")
+            .fixed_pos(egui::pos2(SPACING, row2_y))
+            .order(egui::Order::Foreground)
+            .show(ctx, |ui| {
+                if self.circular_button_styled(ui, BUTTON_RADIUS, "Crop", "crop", 
+                    egui::Color32::from_rgb(60, 60, 70)) {
+                    self.current_phase = Phase::Crop;
+                    self.crop_rect = None;
+                }
+            });
+        
+        // Save button (middle)
+        egui::Area::new("save_btn")
+            .fixed_pos(egui::pos2(SPACING + BUTTON_RADIUS * 2.0 + SPACING, row2_y))
+            .order(egui::Order::Foreground)
+            .show(ctx, |ui| {
+                if self.circular_button_styled(ui, BUTTON_RADIUS, "Save", "save",
+                    egui::Color32::from_rgb(60, 60, 70)) {
+                    self.save_and_continue_iteration(ctx);
+                }
+            });
+        
+        // New Image button (right)
+        egui::Area::new("new_btn")
+            .fixed_pos(egui::pos2(SPACING + (BUTTON_RADIUS * 2.0 + SPACING) * 2.0, row2_y))
+            .order(egui::Order::Foreground)
+            .show(ctx, |ui| {
+                if self.circular_button_styled(ui, BUTTON_RADIUS, "New", "new",
+                    egui::Color32::from_rgb(60, 60, 70)) {
+                    self.start_new_photo_session();
+                }
+            });
+        
+        // Optional: Export to USB button if USB present (bottom left corner)
+        if self.usb_present() {
+            let export_y = screen_rect.max.y - BUTTON_RADIUS - SPACING / 2.0;
+            egui::Area::new("export_btn")
+                .fixed_pos(egui::pos2(SPACING, export_y))
+                .order(egui::Order::Foreground)
+                .show(ctx, |ui| {
+                    if self.circular_button_styled(ui, BUTTON_RADIUS * 0.7, "USB", "export",
+                        egui::Color32::from_rgb(40, 80, 40)) {
+                        match self.copy_to_usb() {
+                            Ok(()) => {
+                                self.export_message = Some("✓ Exported to USB!".to_string());
+                                self.export_message_time = Some(Instant::now());
+                            }
+                            Err(e) => {
+                                self.export_message = Some(format!("✗ Export failed: {}", e));
+                                self.export_message_time = Some(Instant::now());
+                            }
+                        }
+                    }
+                });
+        }
+    }
+
+    // ============================================================================
+    // PHASE 3: CROP - Vertical sliders on right, Cancel/Apply on left
+    // ============================================================================
+    fn render_crop_buttons_circular(&mut self, ctx: &egui::Context, screen_rect: egui::Rect) {
+        const BUTTON_RADIUS: f32 = 60.0;  // Larger for crop actions
+        const SPACING: f32 = 20.0;
+        
+        // Left side: Two buttons stacked vertically
+        let left_x = SPACING + BUTTON_RADIUS;
+        let button_vertical_spacing = SPACING * 2.0;
+        
+        // Center buttons vertically
+        let total_height = BUTTON_RADIUS * 4.0 + button_vertical_spacing;
+        let start_y = (screen_rect.height() - total_height) / 2.0 + screen_rect.min.y;
+        
+        // Cancel button (top)
+        egui::Area::new("cancel_crop_btn")
+            .fixed_pos(egui::pos2(left_x, start_y + BUTTON_RADIUS) - egui::vec2(BUTTON_RADIUS, BUTTON_RADIUS))
+            .order(egui::Order::Foreground)
+            .show(ctx, |ui| {
+                if self.circular_button_styled(ui, BUTTON_RADIUS, "Cancel", "cancel",
+                    egui::Color32::from_rgb(80, 40, 40)) {
+                    self.current_phase = Phase::Edit;
+                    self.crop_rect = None;
+                }
+            });
+        
+        // Apply Crop button (bottom)
+        egui::Area::new("apply_crop_btn")
+            .fixed_pos(egui::pos2(
+                left_x,
+                start_y + BUTTON_RADIUS * 3.0 + button_vertical_spacing
+            ) - egui::vec2(BUTTON_RADIUS, BUTTON_RADIUS))
+            .order(egui::Order::Foreground)
+            .show(ctx, |ui| {
+                if self.circular_button_styled(ui, BUTTON_RADIUS, "Apply", "apply",
+                    egui::Color32::from_rgb(40, 80, 40)) {
+                    self.apply_crop_and_sort(ctx);
+                }
+            });
+    }
+
+    // ============================================================================
+    // VERTICAL SLIDERS (for Edit and Crop phases) - Placed horizontally
+    // ============================================================================
+    fn render_vertical_sliders(&mut self, ctx: &egui::Context, screen_rect: egui::Rect, 
+                                slider_width: f32, _slider_height: f32, spacing: f32) {
+        // Place sliders side by side on the right edge
+        let slider_spacing = spacing;
+        
+        // More padding at top and bottom to prevent handle cutoff
+        let knob_radius = slider_width * 0.6; // Same calculation as in vertical_slider
+        let top_padding = spacing * 3.0 + knob_radius; // Extra space for top handle
+        let bottom_padding = spacing * 5.0; // Extra space for label and bottom handle
+        
+        // Stretch sliders to fill screen height (with padding)
+        let full_slider_height = screen_rect.height() - top_padding - bottom_padding;
+        
+        // Start from right edge, moving left
+        let slider2_x = screen_rect.max.x - slider_width - spacing;
+        let slider1_x = slider2_x - slider_width - slider_spacing;
+        
+        // Start from top with padding
+        let start_y = screen_rect.min.y + top_padding;
+        
+        // Threshold slider (left one)
+        let mut threshold = self.sorting_params.threshold;
+        let threshold_changed = egui::Area::new("threshold_slider")
+            .fixed_pos(egui::pos2(slider1_x, start_y))
+            .order(egui::Order::Foreground)
+            .show(ctx, |ui| {
+                ui.vertical(|ui| {
+                    vertical_slider(ui, &mut threshold, 
+                        0.0..=255.0, slider_width, full_slider_height, "Threshold")
+                }).inner
+            }).inner;
+        
+        if threshold_changed {
+            self.sorting_params.threshold = threshold;
+            self.apply_pixel_sort(ctx);
+        }
+        
+        // Hue slider (right one)
+        let mut color_tint = self.sorting_params.color_tint;
+        let hue_changed = egui::Area::new("hue_slider")
+            .fixed_pos(egui::pos2(slider2_x, start_y))
+            .order(egui::Order::Foreground)
+            .show(ctx, |ui| {
+                ui.vertical(|ui| {
+                    vertical_slider(ui, &mut color_tint, 
+                        0.0..=360.0, slider_width, full_slider_height, "Hue")
+                }).inner
+            }).inner;
+        
+        if hue_changed {
+            if !self.tint_enabled && color_tint > 0.0 {
+                self.tint_enabled = true;
             }
+            self.sorting_params.color_tint = color_tint;
+            self.apply_pixel_sort(ctx);
+        }
+    }
+
+    // ============================================================================
+    // CIRCULAR BUTTON HELPERS
+    // ============================================================================
+    
+    /// Basic circular button with default styling
+    fn circular_button(&self, ui: &mut egui::Ui, radius: f32, text: &str, id: &str) -> bool {
+        self.circular_button_styled(ui, radius, text, id, egui::Color32::from_rgb(70, 70, 80))
+    }
+    
+    /// Circular button with custom fill color
+    fn circular_button_styled(&self, ui: &mut egui::Ui, radius: f32, text: &str, 
+                               _id: &str, base_fill: egui::Color32) -> bool {
+        let size = egui::vec2(radius * 2.0, radius * 2.0);
+        let (rect, response) = ui.allocate_exact_size(size, egui::Sense::click());
+        
+        if ui.is_rect_visible(rect) {
+            let painter = ui.painter();
+            let center = rect.center();
             
-            ui.add_space(BUTTON_SPACING);
+            // Determine colors based on interaction state
+            let (fill_color, stroke_color) = if response.is_pointer_button_down_on() {
+                // Pressed state - darker
+                let r = base_fill.r().saturating_sub(30);
+                let g = base_fill.g().saturating_sub(30);
+                let b = base_fill.b().saturating_sub(30);
+                (egui::Color32::from_rgb(r, g, b), egui::Color32::from_rgb(120, 120, 130))
+            } else if response.hovered() {
+                // Hovered state - lighter
+                let r = base_fill.r().saturating_add(20);
+                let g = base_fill.g().saturating_add(20);
+                let b = base_fill.b().saturating_add(20);
+                (egui::Color32::from_rgb(r, g, b), egui::Color32::from_rgb(150, 150, 160))
+            } else {
+                // Normal state
+                (base_fill, egui::Color32::from_rgb(100, 100, 110))
+            };
             
-            let action_button = egui::Button::new("Apply Crop").fill(egui::Color32::from_rgb(60, 60, 70));
-            if ui.add_sized(egui::vec2(button_width, BUTTON_HEIGHT), action_button).clicked() {
-                self.apply_crop_and_sort(ctx);
+            // Draw shadow for depth
+            painter.circle(
+                center + egui::vec2(3.0, 3.0),
+                radius,
+                egui::Color32::from_black_alpha(80),
+                egui::Stroke::NONE,
+            );
+            
+            // Draw main circle
+            painter.circle(
+                center,
+                radius,
+                fill_color,
+                egui::Stroke::new(3.0, stroke_color),
+            );
+            
+            // Draw text in center
+            let font_id = egui::FontId::proportional(radius / 3.0); // Scale text with button
+            let galley = painter.layout_no_wrap(text.to_string(), font_id, egui::Color32::WHITE);
+            let text_pos = center - galley.size() / 2.0;
+            painter.galley(text_pos, galley);
+            
+            // Change cursor on hover
+            if response.hovered() {
+                ui.ctx().set_cursor_icon(egui::CursorIcon::PointingHand);
             }
-        });
+        }
+        
+        response.clicked()
     }
 
     fn cycle_algorithm(&mut self) {
@@ -748,120 +847,127 @@ impl PixelSorterApp {
 // HELPER FUNCTIONS
 // ============================================================================
 
-/// Custom slider that shows value in a bubble only when touched/dragged
-fn touch_slider(ui: &mut egui::Ui, value: &mut f32, range: std::ops::RangeInclusive<f32>) -> egui::Response {
-    let desired_size = egui::vec2(ui.available_width() - 20.0, SLIDER_KNOB_SIZE); // Use constant for knob size
+/// Vertical slider helper function
+fn vertical_slider(ui: &mut egui::Ui, value: &mut f32, range: std::ops::RangeInclusive<f32>,
+                    width: f32, height: f32, label: &str) -> bool {
+    let desired_size = egui::vec2(width, height);
     let (rect, mut response) = ui.allocate_exact_size(desired_size, egui::Sense::click_and_drag());
     
-    // Add horizontal padding
-    let rect = rect.shrink2(egui::vec2(10.0, 0.0));
+    let mut changed = false;
     
     if ui.is_rect_visible(rect) {
-        let visuals = ui.style().interact(&response);
+        let painter = ui.painter();
         
-        // Background rail (thicker for bigger knob)
-        let rail_rect = rect.shrink2(egui::vec2(0.0, rect.height() * 0.3));
-        ui.painter().rect(
+        // Background rail
+        let rail_rect = rect.shrink2(egui::vec2(width * 0.3, 0.0));
+        painter.rect(
             rail_rect,
-            rail_rect.height() / 2.0,
-            ui.visuals().widgets.inactive.bg_fill,
-            visuals.bg_stroke,
+            rail_rect.width() / 2.0,
+            egui::Color32::from_rgb(40, 40, 45),
+            egui::Stroke::new(2.0, egui::Color32::from_rgb(80, 80, 90)),
         );
         
-        // Calculate the position
+        // Calculate normalized position (inverted for vertical)
         let min = *range.start();
         let max = *range.end();
         let normalized = (*value - min) / (max - min);
         
         // Handle dragging
-        if response.dragged() {
+        if response.dragged() || response.clicked() {
             if let Some(mouse_pos) = ui.ctx().pointer_interact_pos() {
-                let new_normalized = ((mouse_pos.x - rect.left()) / rect.width()).clamp(0.0, 1.0);
+                // Invert y-axis (top = max, bottom = min)
+                let new_normalized = 1.0 - ((mouse_pos.y - rect.top()) / rect.height()).clamp(0.0, 1.0);
                 *value = min + new_normalized * (max - min);
+                changed = true;
                 response.mark_changed();
             }
         }
         
-        // Handle direct click
-        if response.clicked() {
-            if let Some(mouse_pos) = ui.ctx().pointer_interact_pos() {
-                let new_normalized = ((mouse_pos.x - rect.left()) / rect.width()).clamp(0.0, 1.0);
-                *value = min + new_normalized * (max - min);
-                response.mark_changed();
-            }
-        }
-        
-        // Filled portion
-        let filled_width = rect.width() * normalized;
-        if filled_width > 0.0 {
+        // Filled portion (from bottom up)
+        let filled_height = rect.height() * normalized;
+        if filled_height > 0.0 {
             let filled_rect = egui::Rect::from_min_max(
-                rail_rect.min,
-                egui::pos2(rail_rect.min.x + filled_width, rail_rect.max.y),
+                egui::pos2(rail_rect.min.x, rail_rect.max.y - filled_height),
+                rail_rect.max,
             );
-            ui.painter().rect(
+            painter.rect(
                 filled_rect,
-                rail_rect.height() / 2.0,
-                ui.visuals().selection.bg_fill,
+                rail_rect.width() / 2.0,
+                egui::Color32::from_rgb(80, 120, 200),
                 egui::Stroke::NONE,
             );
         }
         
-        // Bigger knob/handle
-        let knob_pos = rect.left() + rect.width() * normalized;
-        let knob_center = egui::pos2(knob_pos, rect.center().y);
-        let knob_radius = SLIDER_KNOB_SIZE / 2.0; // Use full knob size constant
+        // Knob/handle
+        let knob_y = rect.bottom() - rect.height() * normalized;
+        let knob_center = egui::pos2(rect.center().x, knob_y);
+        let knob_radius = width * 0.6;
         
-        // Draw knob with shadow for depth
-        ui.painter().circle(
-            knob_center + egui::vec2(1.0, 1.0),
+        // Draw knob shadow
+        painter.circle(
+            knob_center + egui::vec2(2.0, 2.0),
             knob_radius,
-            egui::Color32::from_black_alpha(40),
+            egui::Color32::from_black_alpha(60),
             egui::Stroke::NONE,
         );
-        ui.painter().circle(
+        
+        // Draw knob
+        painter.circle(
             knob_center,
             knob_radius,
-            visuals.bg_fill,
-            egui::Stroke::new(2.0, visuals.fg_stroke.color),
+            egui::Color32::from_rgb(200, 200, 210),
+            egui::Stroke::new(2.0, egui::Color32::from_rgb(100, 100, 110)),
         );
         
-        // Show value bubble ONLY when actively dragging (not just hovering)
-        // Use a layer to ensure it's always on top
+        // Show value bubble when dragging (on top layer to avoid clipping)
         if response.dragged() {
             let text = format!("{:.0}", value);
-            let font_id = egui::FontId::proportional(20.0); // Bigger text
-            let galley = ui.painter().layout_no_wrap(text, font_id.clone(), egui::Color32::WHITE);
+            let font_id = egui::FontId::proportional(18.0);
             
-            // Bubble background
-            let bubble_size = galley.size() + egui::vec2(20.0, 14.0); // More padding
-            let bubble_pos = egui::pos2(knob_pos - bubble_size.x / 2.0, rect.top() - bubble_size.y - 16.0);
+            // Use a separate layer for the bubble to ensure it's on top
+            let layer_id = egui::LayerId::new(egui::Order::Tooltip, ui.id().with("value_bubble"));
+            let layer_painter = ui.ctx().layer_painter(layer_id);
+            
+            let galley = layer_painter.layout_no_wrap(text, font_id, egui::Color32::WHITE);
+            
+            let bubble_size = galley.size() + egui::vec2(20.0, 12.0);
+            let bubble_pos = egui::pos2(rect.left() - bubble_size.x - 12.0, knob_y - bubble_size.y / 2.0);
             let bubble_rect = egui::Rect::from_min_size(bubble_pos, bubble_size);
             
-            // Draw on a higher layer to ensure visibility
-            let layer_id = egui::LayerId::new(egui::Order::Tooltip, egui::Id::new("slider_bubble"));
-            ui.ctx().layer_painter(layer_id).rect(
+            layer_painter.rect(
                 bubble_rect,
-                6.0, // More rounded
+                6.0,
                 egui::Color32::from_rgb(50, 50, 55),
                 egui::Stroke::new(2.0, egui::Color32::from_rgb(120, 120, 130)),
             );
             
-            // Text
             let text_pos = bubble_rect.center() - galley.size() / 2.0;
-            ui.ctx().layer_painter(layer_id).galley(text_pos, galley);
+            layer_painter.galley(text_pos, galley);
         }
+        
+        // Label below slider (positioned well below to avoid interfering with handle)
+        let label_font = egui::FontId::proportional(14.0);
+        let label_galley = painter.layout_no_wrap(label.to_string(), label_font, egui::Color32::WHITE);
+        let label_pos = egui::pos2(
+            rect.center().x - label_galley.size().x / 2.0,
+            rect.bottom() + 40.0, // Moved further down to 40.0 to clear bottom handle
+        );
+        
+        // Label background for readability
+        let label_bg_rect = egui::Rect::from_min_size(
+            label_pos - egui::vec2(4.0, 2.0),
+            label_galley.size() + egui::vec2(8.0, 4.0),
+        );
+        painter.rect(
+            label_bg_rect,
+            3.0,
+            egui::Color32::from_black_alpha(180),
+            egui::Stroke::NONE,
+        );
+        painter.galley(label_pos, label_galley);
     }
     
-    response
-}
-
-fn equal_button(ui: &mut egui::Ui, text: &str, height: f32, count: usize) -> egui::Response {
-    let spacing_total = BUTTON_SPACING * (count - 1) as f32;
-    let width = (ui.available_width() - spacing_total) / count as f32;
-    ui.add_sized(
-        egui::vec2(width, height),
-        egui::Button::new(text),
-    )
+    changed
 }
 
 // Helper functions for image centering
