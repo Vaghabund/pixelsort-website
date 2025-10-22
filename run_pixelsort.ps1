@@ -25,15 +25,6 @@ try {
     if ($LOCAL -ne $REMOTE) {
         Write-Host "Updates found! Pulling changes..." -ForegroundColor Yellow
         git pull origin main
-        
-        Write-Host "Rebuilding application (this may take a few minutes)..." -ForegroundColor Yellow
-        cargo build --release
-        
-        if ($LASTEXITCODE -eq 0) {
-            Write-Host "Build successful!" -ForegroundColor Green
-        } else {
-            Write-Host "Build failed! Using existing version." -ForegroundColor Red
-        }
     } else {
         Write-Host "Already up to date." -ForegroundColor Green
     }
@@ -45,6 +36,7 @@ Write-Host "Starting Pixel Sorter..." -ForegroundColor Cyan
 Write-Host "==========================================" -ForegroundColor Cyan
 
 # Run the application (release mode for better performance)
+# cargo run will automatically rebuild only if needed
 cargo run --release
 
 # If app exits, wait a moment before this script ends

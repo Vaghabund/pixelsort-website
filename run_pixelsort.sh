@@ -25,15 +25,6 @@ if ping -c 1 github.com &> /dev/null; then
     if [ "$LOCAL" != "$REMOTE" ]; then
         echo "Updates found! Pulling changes..."
         git pull origin main
-        
-        echo "Rebuilding application (this may take a few minutes)..."
-        cargo build --release
-        
-        if [ $? -eq 0 ]; then
-            echo "Build successful!"
-        else
-            echo "Build failed! Using existing version."
-        fi
     else
         echo "Already up to date."
     fi
@@ -45,6 +36,7 @@ echo "Starting Pixel Sorter..."
 echo "=========================================="
 
 # Run the application (release mode for better performance)
+# cargo run will automatically rebuild only if needed
 cargo run --release
 
 # If app exits, wait a moment before this script ends

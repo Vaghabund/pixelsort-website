@@ -6,8 +6,9 @@ This setup allows the Pixel Sorter app to automatically check for updates on Git
 
 1. **Wrapper Script**: `run_pixelsort.sh` checks for git updates before launching the app
 2. **Update Check**: Compares local and remote git commits
-3. **Auto Build**: If updates found, pulls changes and runs `cargo build --release`
-4. **Launch**: Starts the app (updated or existing version)
+3. **Auto Pull**: If updates found, pulls changes from GitHub
+4. **Smart Build**: `cargo run --release` automatically rebuilds only what changed
+5. **Launch**: Starts the app
 
 ## Installation on Raspberry Pi
 
@@ -65,11 +66,11 @@ Just run the PowerShell script:
 
 ## Notes
 
-- **First build**: Initial compilation takes 1-2 minutes on Raspberry Pi
-- **Updates**: Subsequent builds only recompile changed files (much faster)
+- **Smart compilation**: `cargo run` only rebuilds changed files, not the entire project
+- **First run**: Initial compilation takes 1-2 minutes on Raspberry Pi
+- **Updates**: Subsequent builds are much faster (usually seconds, not minutes)
 - **No internet**: App starts normally if GitHub is unreachable
-- **Build failure**: Falls back to existing compiled version
-- **Release mode**: Uses `--release` flag for optimal performance (slower build, faster runtime)
+- **Release mode**: Uses `--release` flag for optimal performance
 
 ## Exiting the App
 
