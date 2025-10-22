@@ -206,7 +206,7 @@ impl PixelSorterApp {
     fn render_splash_screen(&mut self, ctx: &egui::Context, elapsed: f32) {
         // Load logo texture if not loaded yet
         if self.splash_logo.is_none() {
-            if let Ok(img) = image::open("assets/Harpiye_ICON.png") {
+            if let Ok(img) = image::open("assets/Harpy_ICON.png") {
                 let rgba = img.to_rgba8();
                 let size = [rgba.width() as usize, rgba.height() as usize];
                 let pixels = rgba.as_flat_samples();
