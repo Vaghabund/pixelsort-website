@@ -45,16 +45,13 @@ async fn main() -> Result<()> {
     // Load application icon
     let icon_data = load_icon();
     
-    // WINDOWED MODE: Normal window with decorations for manual resizing
+    // KIOSK MODE: Fullscreen borderless window (press ESC to exit for debugging)
     let options = eframe::NativeOptions {
         viewport: egui::ViewportBuilder::default()
-            .with_inner_size([1024.0, 600.0])    // Initial size optimized for 7" display
-            .with_min_inner_size([800.0, 480.0]) // Minimum size for smaller displays
-            .with_decorations(true)               // Show title bar, borders, and buttons
-            .with_resizable(true)                 // Can be resized
-            .with_close_button(true)              // Show close button
-            .with_minimize_button(true)           // Show minimize button
-            .with_maximize_button(true)           // Show maximize button
+            .with_fullscreen(true)                // Start in fullscreen
+            .with_decorations(false)              // No title bar or borders
+            .with_resizable(false)                // Cannot be resized
+            .with_cursor_visible(false)           // Hide mouse cursor
             .with_icon(icon_data),                // Set window icon
         ..Default::default()
     };

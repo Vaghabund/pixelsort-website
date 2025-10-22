@@ -65,6 +65,10 @@ pub struct PixelSorterApp {
     pub splash_start_time: Option<Instant>,
     pub splash_logo: Option<egui::TextureHandle>,
     
+    // Exit mechanism for kiosk mode
+    pub exit_tap_count: u32,
+    pub exit_tap_last_time: Option<Instant>,
+    
     // Other
     pub tint_enabled: bool,
 }
@@ -122,6 +126,8 @@ impl PixelSorterApp {
             show_splash: true,
             splash_start_time: Some(Instant::now()),
             splash_logo: None,
+            exit_tap_count: 0,
+            exit_tap_last_time: None,
             tint_enabled: false,
         }
     }
@@ -157,6 +163,39 @@ impl PixelSorterApp {
 
 impl eframe::App for PixelSorterApp {
     fn update(&mut self, ctx: &egui::Context, _frame: &mut eframe::Frame) {
+        // ESC key to exit (for debugging in kiosk mode with keyboard)
+        if ctx.input(|i| i.key_pressed(egui::Key::Escape)) {
+            ctx.send_viewport_cmd(egui::ViewportCommand::Close);
+        }
+        
+        // Hidden exit area for touchscreen (top-left corner, tap 5 times within 3 seconds)
+        egui::Area::new("exit_area")
+            .fixed_pos(egui::pos2(0.0, 0.0))
+            .order(egui::Order::Foreground)
+            .show(ctx, |ui| {
+                let exit_button_size = egui::vec2(50.0, 50.0);
+                let (_rect, response) = ui.allocate_exact_size(exit_button_size, egui::Sense::click());
+                
+                if response.clicked() {
+                    let now = Instant::now();
+                    
+                    // Reset count if more than 3 seconds passed since last tap
+                    if let Some(last_time) = self.exit_tap_last_time {
+                        if now.duration_since(last_time).as_secs() > 3 {
+                            self.exit_tap_count = 0;
+                        }
+                    }
+                    
+                    self.exit_tap_count += 1;
+                    self.exit_tap_last_time = Some(now);
+                    
+                    // Exit after 5 taps
+                    if self.exit_tap_count >= 5 {
+                        ctx.send_viewport_cmd(egui::ViewportCommand::Close);
+                    }
+                }
+            });
+        
         // Show splash screen for 2 seconds
         if self.show_splash {
             if let Some(start_time) = self.splash_start_time {
@@ -622,8 +661,8 @@ impl PixelSorterApp {
     // PHASE 1: INPUT - Two circles in right bottom corner
     // ============================================================================
     fn render_input_buttons_circular(&mut self, ctx: &egui::Context, screen_rect: egui::Rect) {
-        const LARGE_BUTTON_RADIUS: f32 = 80.0;  // Take Picture (double size)
-        const SMALL_BUTTON_RADIUS: f32 = 40.0;  // Upload Image
+        const LARGE_BUTTON_RADIUS: f32 = 100.0;  // Take Picture (larger for primary action)
+        const SMALL_BUTTON_RADIUS: f32 = 50.0;   // Upload Image
         const SPACING: f32 = 20.0;
         
         // Calculate positions - right bottom corner alignment
@@ -661,7 +700,7 @@ impl PixelSorterApp {
     // PHASE 2: EDIT - Horizontal sliders on right, buttons on left in two rows
     // ============================================================================
     fn render_edit_buttons_circular(&mut self, ctx: &egui::Context, screen_rect: egui::Rect) {
-        const BUTTON_RADIUS: f32 = 50.0;
+        const BUTTON_RADIUS: f32 = 80.0;  // Larger buttons for better touch targets
         const SLIDER_WIDTH: f32 = 60.0;
         const SLIDER_HEIGHT: f32 = 300.0;
         const SPACING: f32 = 20.0;
@@ -760,7 +799,7 @@ impl PixelSorterApp {
     // PHASE 3: CROP - Vertical sliders on right, Cancel/Apply on left
     // ============================================================================
     fn render_crop_buttons_circular(&mut self, ctx: &egui::Context, screen_rect: egui::Rect) {
-        const BUTTON_RADIUS: f32 = 60.0;  // Larger for crop actions
+        const BUTTON_RADIUS: f32 = 80.0;  // Larger buttons for better touch targets
         const SPACING: f32 = 20.0;
         
         // Left side: Two buttons stacked vertically
@@ -865,7 +904,7 @@ impl PixelSorterApp {
     
     /// Basic circular button with default styling
     fn circular_button(&self, ui: &mut egui::Ui, radius: f32, text: &str, id: &str) -> bool {
-        self.circular_button_styled(ui, radius, text, id, egui::Color32::from_rgb(70, 70, 80))
+        self.circular_button_styled(ui, radius, text, id, egui::Color32::from_rgba_unmultiplied(70, 70, 80, 180))
     }
     
     /// Circular button with custom fill color

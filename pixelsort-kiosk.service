@@ -1,0 +1,21 @@
+[Unit]
+Description=Raspberry Pi Pixel Sorter (Auto-updating Kiosk Mode)
+After=network-online.target graphical.target
+Wants=network-online.target
+
+[Service]
+Type=simple
+User=pixelsort
+WorkingDirectory=/home/pixelsort/Pixelsort
+ExecStart=/home/pixelsort/Pixelsort/run_pixelsort.sh
+Restart=on-failure
+RestartSec=10
+StandardOutput=journal
+StandardError=journal
+
+# Environment variables
+Environment="DISPLAY=:0"
+Environment="XAUTHORITY=/home/pixelsort/.Xauthority"
+
+[Install]
+WantedBy=graphical.target
