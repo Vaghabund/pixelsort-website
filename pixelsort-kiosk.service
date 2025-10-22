@@ -1,6 +1,6 @@
 [Unit]
 Description=Raspberry Pi Pixel Sorter (Auto-updating Kiosk Mode)
-After=network-online.target graphical.target
+After=graphical.target network-online.target
 Wants=network-online.target
 
 [Service]
@@ -13,7 +13,7 @@ RestartSec=10
 StandardOutput=journal
 StandardError=journal
 
-# Environment variables
+# Environment variables for X11 display
 Environment="DISPLAY=:0"
 Environment="XAUTHORITY=/home/pixelsort/.Xauthority"
 

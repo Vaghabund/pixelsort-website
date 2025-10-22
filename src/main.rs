@@ -48,7 +48,9 @@ async fn main() -> Result<()> {
     // KIOSK MODE: Fullscreen borderless window (press ESC to exit for debugging)
     let options = eframe::NativeOptions {
         viewport: egui::ViewportBuilder::default()
+            .with_inner_size([1920.0, 1080.0])    // Force full resolution
             .with_fullscreen(true)                // Start in fullscreen
+            .with_maximized(true)                 // Maximize if fullscreen fails
             .with_decorations(false)              // No title bar or borders
             .with_resizable(false)                // Cannot be resized
             .with_icon(icon_data),                // Set window icon
@@ -78,6 +80,9 @@ async fn main() -> Result<()> {
 }
 
 fn setup_touch_style(ctx: &egui::Context) {
+    // Force 1.0 zoom to use full resolution (disable DPI scaling)
+    ctx.set_zoom_factor(1.0);
+    
     let mut style = (*ctx.style()).clone();
     
     // Kiosk-style UI with minimal margins
