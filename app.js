@@ -46,7 +46,8 @@ class PixelSortApp {
         document.getElementById('hue-slider').addEventListener('input', (e) => this.updateHue(e));
         document.getElementById('algorithm-btn').addEventListener('click', () => this.cycleAlgorithm());
         document.getElementById('mode-btn').addEventListener('click', () => this.cycleMode());
-        document.getElementById('save-btn').addEventListener('click', () => this.saveAndIterate());
+        document.getElementById('save-btn').addEventListener('click', () => this.saveImage());
+        document.getElementById('iterate-btn').addEventListener('click', () => this.iterateImage());
         document.getElementById('new-btn').addEventListener('click', () => this.newImage());
     }
 
@@ -219,16 +220,12 @@ class PixelSortApp {
         this.processImage();
     }
 
-    saveAndIterate() {
+    saveImage() {
         if (!this.processedImage) return;
 
-        this.iterationCount++;
         const canvas = document.getElementById('display-canvas');
-        
-        // Generate filename
         const filename = `edit_${String(this.iterationCount).padStart(3, '0')}_${this.currentAlgorithm.toLowerCase()}.png`;
-        
-        // Download image
+
         canvas.toBlob(blob => {
             const url = URL.createObjectURL(blob);
             const a = document.createElement('a');
@@ -236,17 +233,22 @@ class PixelSortApp {
             a.download = filename;
             a.click();
             URL.revokeObjectURL(url);
-            
-            // Show success message
+
             this.showStatus(`Saved: ${filename}`);
-            
-            // Update original image to current processed image for iteration
-            const img = new Image();
-            img.onload = () => {
-                this.originalImage = img;
-            };
-            img.src = canvas.toDataURL();
         });
+    }
+
+    iterateImage() {
+        if (!this.processedImage) return;
+
+        this.iterationCount++;
+        const canvas = document.getElementById('display-canvas');
+
+        const img = new Image();
+        img.onload = () => {
+            this.originalImage = img;
+        };
+        img.src = canvas.toDataURL();
     }
 
     newImage() {
