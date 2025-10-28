@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
-    <meta name="apple-mobile-web-app-capable" content="yes">
+    <meta name="mobile-web-app-capable" content="yes">
     <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
     <meta name="theme-color" content="#000000">
     <title>Pixelsort</title>
@@ -21,7 +21,8 @@
     <div id="app" class="container" style="display: none;">
         <!-- Input Phase -->
         <div id="input-phase" class="phase">
-            <h1 class="title">Pixelsort</h1>
+            <h1 class="header">HARPY</h1>
+            <h2 class="sub-header">Pixelsorter</h2>
             
             <div class="button-group">
                 <button id="camera-btn" class="btn btn-large">
@@ -87,6 +88,13 @@
                             <polyline points="7 3 7 8 15 8"></polyline>
                         </svg>
                         <span>Save & Iterate</span>
+                    </button>
+                    
+                    <button id="iterate-btn" class="btn btn-medium">
+                        <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                            <path d="M12 2v20m10-10H2"></path>
+                        </svg>
+                        <span>Iterate</span>
                     </button>
                     
                     <button id="new-btn" class="btn btn-medium">

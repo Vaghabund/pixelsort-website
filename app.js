@@ -32,14 +32,25 @@ class PixelSortApp {
         setTimeout(() => {
             document.getElementById('splash').style.display = 'none';
             document.getElementById('app').style.display = 'block';
-        }, 2000);
+        }, 1500);
     }
 
     initUI() {
         // Input phase buttons
-        document.getElementById('camera-btn').addEventListener('click', () => this.openCamera());
-        document.getElementById('upload-btn').addEventListener('click', () => this.openFileDialog());
-        document.getElementById('file-input').addEventListener('change', (e) => this.handleFileSelect(e));
+        const cameraBtn = document.getElementById('camera-btn');
+        const uploadBtn = document.getElementById('upload-btn');
+        const saveBtn = document.getElementById('save-btn');
+        const iterateBtn = document.getElementById('iterate-btn');
+
+        if (!cameraBtn || !uploadBtn || !saveBtn || !iterateBtn) {
+            console.warn('One or more UI elements are missing.');
+            return;
+        }
+
+        cameraBtn.addEventListener('click', () => this.openCamera());
+        uploadBtn.addEventListener('click', () => this.openFileDialog());
+        saveBtn.addEventListener('click', () => this.saveImage());
+        iterateBtn.addEventListener('click', () => this.iterateImage());
 
         // Edit phase controls
         document.getElementById('threshold-slider').addEventListener('input', (e) => this.updateThreshold(e));
@@ -152,7 +163,7 @@ class PixelSortApp {
         if (!this.originalImage) return;
 
         const canvas = document.getElementById('display-canvas');
-        const ctx = canvas.getContext('2d');
+        const ctx = canvas.getContext('2d', { willReadFrequently: true });
         
         // Set canvas size to match image
         canvas.width = this.originalImage.width;
@@ -285,5 +296,5 @@ class PixelSortApp {
 
 // Initialize app when DOM is loaded
 document.addEventListener('DOMContentLoaded', () => {
-    new PixelSortApp();
+    const app = new PixelSortApp();
 });

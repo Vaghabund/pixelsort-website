@@ -1,4 +1,4 @@
-# Pixelsort Website
+# HARPY
 
 This repository hosts the website for the handheld pixel sorter project, **Harpy**, which is part of the [Pixelsort project](https://github.com/Vaghabund/Pixelsort). The website is live and can be accessed at [https://vaghabund.github.io/pixelsort-website/](https://vaghabund.github.io/pixelsort-website/).
 
