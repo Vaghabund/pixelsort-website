@@ -4,6 +4,8 @@ Touch-optimized pixel sorting handheld device built on Raspberry Pi 5 (7" TFT vi
 
 **Harpy** is a portable, kiosk-mode pixel sorting device designed for creative image manipulation through touch interaction.
 
+> **NEW:** [Web Version Available](web/README.md) - Mobile-friendly browser-based pixel sorter that works on any device!
+
 ## Why Rust?
 
 - Fast native performance for real-time interaction
@@ -52,6 +54,15 @@ Touch-optimized pixel sorting handheld device built on Raspberry Pi 5 (7" TFT vi
 This is a **vibe coding project** - built through natural collaboration between human creativity and AI assistance. GitHub Copilot has been an integral part of the development process, helping to architect the touch-optimized UI, implement the kiosk mode features, and refine the user experience. The result is a tool that combines artistic vision with rapid iterative development, creating something that feels both polished and experimental.
 
 ## Quick Start
+
+### Web Version (Any Device)
+
+The easiest way to try Pixelsort is through the web version:
+
+1. Open [web/index.html](web/index.html) in any modern browser
+2. Works on mobile phones, tablets, and desktop
+3. No installation required
+4. See the [Web README](web/README.md) for details
 
 ### Development (Desktop)
 
