@@ -1,0 +1,26 @@
+{
+  "name": "Pixelsort",
+  "short_name": "Pixelsort",
+  "description": "Mobile pixel sorting creative tool",
+  "start_url": "/",
+  "display": "standalone",
+  "background_color": "#000000",
+  "theme_color": "#000000",
+  "orientation": "portrait-primary",
+  "icons": [
+    {
+      "src": "../assets/Harpy_ICON.png",
+      "sizes": "192x192",
+      "type": "image/png",
+      "purpose": "any maskable"
+    },
+    {
+      "src": "../assets/Harpy_ICON.png",
+      "sizes": "512x512",
+      "type": "image/png",
+      "purpose": "any maskable"
+    }
+  ],
+  "categories": ["photo", "graphics", "entertainment"],
+  "screenshots": []
+}

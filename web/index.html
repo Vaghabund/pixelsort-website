@@ -1,0 +1,110 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+    <meta name="apple-mobile-web-app-capable" content="yes">
+    <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+    <meta name="theme-color" content="#000000">
+    <title>Pixelsort</title>
+    <link rel="stylesheet" href="styles.css">
+    <link rel="manifest" href="manifest.json">
+    <link rel="icon" type="image/png" href="../assets/Harpy_ICON.png">
+</head>
+<body>
+    <!-- Splash Screen -->
+    <div id="splash" class="splash">
+        <img src="../assets/Harpy_ICON.png" alt="Harpy" class="splash-logo">
+    </div>
+
+    <!-- Main App Container -->
+    <div id="app" class="container" style="display: none;">
+        <!-- Input Phase -->
+        <div id="input-phase" class="phase">
+            <h1 class="title">Pixelsort</h1>
+            
+            <div class="button-group">
+                <button id="camera-btn" class="btn btn-large">
+                    <svg width="48" height="48" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                        <path d="M23 19a2 2 0 0 1-2 2H3a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h4l2-3h6l2 3h4a2 2 0 0 1 2 2z"></path>
+                        <circle cx="12" cy="13" r="4"></circle>
+                    </svg>
+                    <span>Take Picture</span>
+                </button>
+                
+                <button id="upload-btn" class="btn btn-small">
+                    <svg width="32" height="32" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                        <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"></path>
+                        <polyline points="17 8 12 3 7 8"></polyline>
+                        <line x1="12" y1="3" x2="12" y2="15"></line>
+                    </svg>
+                    <span>Upload</span>
+                </button>
+            </div>
+            
+            <input type="file" id="file-input" accept="image/*" style="display: none;">
+            <video id="camera-preview" autoplay playsinline style="display: none;"></video>
+        </div>
+
+        <!-- Edit Phase -->
+        <div id="edit-phase" class="phase" style="display: none;">
+            <div class="image-container">
+                <canvas id="display-canvas"></canvas>
+            </div>
+            
+            <div class="controls">
+                <!-- Sliders -->
+                <div class="slider-group">
+                    <div class="slider-container">
+                        <label>Threshold</label>
+                        <input type="range" id="threshold-slider" min="0" max="255" value="0" class="slider">
+                        <span id="threshold-value" class="slider-value">0</span>
+                    </div>
+                    
+                    <div class="slider-container">
+                        <label>Hue</label>
+                        <input type="range" id="hue-slider" min="0" max="360" value="0" class="slider">
+                        <span id="hue-value" class="slider-value">0</span>
+                    </div>
+                </div>
+                
+                <!-- Action Buttons -->
+                <div class="action-buttons">
+                    <button id="algorithm-btn" class="btn btn-medium">
+                        <span class="btn-label">Algorithm</span>
+                        <span id="algorithm-text">Horizontal</span>
+                    </button>
+                    
+                    <button id="mode-btn" class="btn btn-medium">
+                        <span class="btn-label">Mode</span>
+                        <span id="mode-text">Brightness</span>
+                    </button>
+                    
+                    <button id="save-btn" class="btn btn-medium">
+                        <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                            <path d="M19 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h11l5 5v11a2 2 0 0 1-2 2z"></path>
+                            <polyline points="17 21 17 13 7 13 7 21"></polyline>
+                            <polyline points="7 3 7 8 15 8"></polyline>
+                        </svg>
+                        <span>Save & Iterate</span>
+                    </button>
+                    
+                    <button id="new-btn" class="btn btn-medium">
+                        <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                            <polyline points="1 4 1 10 7 10"></polyline>
+                            <path d="M3.51 15a9 9 0 1 0 2.13-9.36L1 10"></path>
+                        </svg>
+                        <span>New Image</span>
+                    </button>
+                </div>
+            </div>
+        </div>
+
+        <!-- Status Message -->
+        <div id="status-message" class="status-message"></div>
+    </div>
+
+    <script src="pixelsorter.js"></script>
+    <script src="app.js"></script>
+</body>
+</html>
